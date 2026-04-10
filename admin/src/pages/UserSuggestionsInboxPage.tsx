@@ -4,12 +4,15 @@ import { Sidebar } from '../components/Sidebar'
 import { Icon } from '../components/Icon'
 import { mockUsers } from '../data/mockUsers'
 import { SuggestionPriority, SuggestionType } from '../types/user'
+import { SuggestionDetailModal } from '../components/SuggestionDetailModal'
 
 export function UserSuggestionsInboxPage() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<'pending' | 'applied'>('pending')
   const [priorityFilter, setPriorityFilter] = useState<SuggestionPriority | 'all'>('all')
   const [typeFilter, setTypeFilter] = useState<SuggestionType | 'all'>('all')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedSuggestion, setSelectedSuggestion] = useState<any | null>(null)
 
   // Flatten all suggestions with user context
   const allSuggestions = useMemo(() => {
@@ -97,6 +100,29 @@ export function UserSuggestionsInboxPage() {
       applied: allSuggestions.filter((s) => s.status === 'applied').length,
     }
   }, [allSuggestions])
+
+  // Selection handlers
+  const toggleSelection = (id: string) => {
+    const newSelected = new Set(selectedIds)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedIds(newSelected)
+  }
+
+  const selectAll = () => {
+    const allIds = new Set(filteredSuggestions.map((s) => `${s.userId}-${s.id}`))
+    setSelectedIds(allIds)
+  }
+
+  const deselectAll = () => {
+    setSelectedIds(new Set())
+  }
+
+  const isAllSelected = filteredSuggestions.length > 0 && selectedIds.size === filteredSuggestions.length
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredSuggestions.length
 
   const priorityCounts = useMemo(() => {
     const tabSuggestions = allSuggestions.filter((s) => (s.status || 'pending') === tab)
@@ -206,54 +232,82 @@ export function UserSuggestionsInboxPage() {
                 </div>
 
                 {/* Filters */}
-                <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
-                  <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-4">Filters</h3>
-                  <div className="space-y-4">
-                    {/* Priority Filter */}
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Priority</p>
-                      <div className="flex flex-wrap gap-2">
-                        {['all', 'urgent', 'high', 'medium', 'low'].map((priority) => (
-                          <button
-                            key={priority}
-                            onClick={() => setPriorityFilter(priority as any)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                              priorityFilter === priority
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-slate-700/30 text-slate-300 hover:bg-slate-600/30'
-                            }`}
-                          >
-                            {priority === 'all' ? 'All' : getPriorityLabel(priority as SuggestionPriority)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-xs text-slate-400 uppercase tracking-wide block mb-2">Priority</label>
+                    <select
+                      value={priorityFilter}
+                      onChange={(e) => setPriorityFilter(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30 transition"
+                    >
+                      <option value="all">All Priorities</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
 
-                    {/* Type Filter */}
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Type</p>
-                      <div className="flex flex-wrap gap-2">
-                        {['all', 'email', 'call', 'tutorial', 'feature', 'recovery', 'survey', 'offer'].map((type) => (
-                          <button
-                            key={type}
-                            onClick={() => setTypeFilter(type as any)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                              typeFilter === type
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-slate-700/30 text-slate-300 hover:bg-slate-600/30'
-                            }`}
-                          >
-                            {type === 'all' ? 'All' : getTypeLabel(type as SuggestionType)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-slate-400 uppercase tracking-wide block mb-2">Type</label>
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30 transition"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="email">Email</option>
+                      <option value="call">Call</option>
+                      <option value="tutorial">Tutorial</option>
+                      <option value="feature">Feature</option>
+                      <option value="recovery">Recovery</option>
+                      <option value="survey">Survey</option>
+                      <option value="offer">Offer</option>
+                    </select>
                   </div>
                 </div>
 
                 {/* Suggestions List */}
-                <div className="space-y-3">
-                  {filteredSuggestions.length === 0 ? (
+                <div className="space-y-4">
+                  {/* Selection Controls & Bulk Actions - only show in pending tab */}
+                  {filteredSuggestions.length > 0 && tab === 'pending' && (
+                    <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-4 backdrop-blur-sm flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = isIndeterminate
+                            }}
+                            onChange={() => (isAllSelected ? deselectAll() : selectAll())}
+                            className="w-5 h-5 rounded border-slate-600 bg-slate-700 cursor-pointer accent-blue-500"
+                          />
+                          <span className="text-sm font-medium text-slate-300">
+                            {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all'}
+                          </span>
+                        </label>
+                        {selectedIds.size > 0 && (
+                          <button
+                            onClick={deselectAll}
+                            className="text-xs text-slate-400 hover:text-slate-300 transition"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      {selectedIds.size > 0 && (
+                        <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
+                          Approve {selectedIds.size} {selectedIds.size === 1 ? 'item' : 'items'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Suggestions Items */}
+                  <div className="space-y-2">
+                    {filteredSuggestions.length === 0 ? (
                     <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-12 backdrop-blur-sm text-center">
                       <p className="text-slate-400 mb-4">No suggestions matching your filters</p>
                       <button
@@ -268,95 +322,87 @@ export function UserSuggestionsInboxPage() {
                     </div>
                   ) : (
                     filteredSuggestions.map((suggestion) => {
+                      const suggestionKey = `${suggestion.userId}-${suggestion.id}`
+                      const isSelected = selectedIds.has(suggestionKey)
                       const priorityColor = getSuggestionPriorityColor(suggestion.priority)
-                      const iconInfo = getSuggestionIcon(suggestion.type)
                       const isApplied = suggestion.status === 'applied'
                       return (
                         <div
-                          key={`${suggestion.userId}-${suggestion.id}`}
-                          className={`p-5 rounded-lg border transition-all hover:border-slate-600 cursor-pointer ${priorityColor.bg} ${priorityColor.border} ${isApplied ? 'opacity-75' : ''}`}
-                          onClick={() => navigate(`/users/${suggestion.userId}`)}
+                          key={suggestionKey}
+                          className={`p-4 rounded-lg border transition-all cursor-pointer ${
+                            isSelected ? 'border-blue-500/50 bg-blue-500/5' : 'hover:border-slate-600/50 hover:bg-slate-800/20'
+                          } border-slate-700/30 ${isApplied ? 'opacity-60' : ''}`}
+                          onClick={() => setSelectedSuggestion(suggestion)}
                         >
-                          <div className="flex items-start gap-4">
-                            {/* Priority Dot & Icon */}
-                            <div className="flex flex-col items-center gap-2 flex-shrink-0">
-                              <div className={`w-3 h-3 rounded-full ${priorityColor.dot}`} />
-                              <div className="w-9 h-9 rounded-lg bg-slate-700/30 flex items-center justify-center">
-                                <Icon type={iconInfo.icon as any} size={1} color={iconInfo.color} />
+                          <div className="flex items-center justify-between gap-3">
+                            {/* Left: Checkbox & Priority Dot & Title */}
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              {tab === 'pending' && (
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelection(suggestionKey)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-5 h-5 rounded border-slate-600 bg-slate-700 cursor-pointer accent-blue-500 flex-shrink-0"
+                                />
+                              )}
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${priorityColor.dot}`} />
+                              <div className="min-w-0 flex-1">
+                                <h3 className="font-medium text-white truncate">{suggestion.title}</h3>
+                                <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
+                                  <span>{suggestion.userName}</span>
+                                  <span>•</span>
+                                  <span>{formatDateTime(suggestion.suggestedAt)}</span>
+                                </div>
                               </div>
                             </div>
 
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-3 mb-2">
-                                <div>
-                                  <h3 className="font-semibold text-white">{suggestion.title}</h3>
-                                  <p className="text-sm text-slate-400 mt-0.5">{suggestion.description}</p>
-                                </div>
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${priorityColor.badge}`}>
-                                    {getPriorityLabel(suggestion.priority)}
-                                  </span>
-                                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-slate-700/30 text-slate-300">
-                                    {getTypeLabel(suggestion.type)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* User Context */}
-                              <div className="flex items-center gap-3 mt-3 mb-3 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <Icon type="user" size={0.9} color="#64748B" />
-                                  <span className="text-slate-300 font-medium">{suggestion.userName}</span>
-                                  <span className="text-slate-500">•</span>
-                                  <span className="text-slate-400">{suggestion.userEmail}</span>
-                                </div>
-                              </div>
-
-                              {/* Reasoning */}
-                              <p className="text-xs text-slate-400 flex items-center gap-1 mt-3 mb-3">
-                                <Icon type="info" size={0.75} color="#64748B" />
-                                {suggestion.reason}
-                              </p>
-
-                              <div className="flex items-center justify-between">
-                                {isApplied ? (
-                                  <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-2">
-                                      <Icon type="check-circle" size={0.85} color="#10B981" />
-                                      <span className="text-xs text-emerald-400 font-medium">
-                                        Applied {suggestion.appliedAt ? formatDateTime(suggestion.appliedAt) : 'on unknown date'}
-                                      </span>
-                                    </div>
-                                    <span className="text-xs text-slate-500">
-                                      {suggestion.automatable ? 'by system' : 'manually'}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <p className="text-xs text-slate-500">{formatDateTime(suggestion.suggestedAt)}</p>
-                                    {suggestion.automatable ? (
-                                      <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
-                                        Approve
-                                      </button>
-                                    ) : (
-                                      <span className="text-xs text-slate-400 italic">Requires manual action</span>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </div>
+                            {/* Right: Approve Button */}
+                            {!isApplied ? (
+                              suggestion.automatable ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                  }}
+                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition flex-shrink-0"
+                                >
+                                  Approve
+                                </button>
+                              ) : (
+                                <span className="text-xs text-slate-500 italic flex-shrink-0">Manual</span>
+                              )
+                            ) : (
+                              <span className="text-xs text-emerald-400 flex-shrink-0 flex items-center gap-1">
+                                <Icon type="check-circle" size={0.7} color="#10B981" />
+                                Applied
+                              </span>
+                            )}
                           </div>
                         </div>
                       )
                     })
                   )}
+                    </div>
                 </div>
               </div>
             </div>
           </main>
         </div>
       </div>
+
+      {/* Detail Modal */}
+      {selectedSuggestion && (
+        <SuggestionDetailModal
+          suggestion={selectedSuggestion}
+          onClose={() => setSelectedSuggestion(null)}
+          onApprove={() => setSelectedSuggestion(null)}
+          formatDateTime={formatDateTime}
+          getPriorityLabel={getPriorityLabel}
+          getTypeLabel={getTypeLabel}
+          getSuggestionPriorityColor={getSuggestionPriorityColor}
+          getSuggestionIcon={getSuggestionIcon}
+        />
+      )}
     </div>
   )
 }

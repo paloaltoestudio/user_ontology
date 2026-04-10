@@ -7,7 +7,7 @@ import { FormsPage } from './pages/FormsPage'
 import { FormDetailPage } from './pages/FormDetailPage'
 import { PublicFormPage } from './pages/PublicFormPage'
 import { UserOntologySummaryPage } from './pages/UserOntologySummaryPage'
-import { UserOntologyDetailPage } from './pages/UserOntologyDetailPage'
+import { UserDetailPageTabbed } from './pages/UserDetailPageTabbed'
 import { UserSuggestionsInboxPage } from './pages/UserSuggestionsInboxPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { ToastProvider, ToastContainer } from './components/Toast/ToastContainer'
@@ -67,7 +67,7 @@ function App() {
           path="/users/:userId"
           element={
             <ProtectedRoute>
-              <UserOntologyDetailPage />
+              <UserDetailPageTabbed />
             </ProtectedRoute>
           }
         />

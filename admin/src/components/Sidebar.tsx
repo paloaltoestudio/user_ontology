@@ -18,9 +18,9 @@ export function Sidebar() {
       <div className="p-6 border-b border-slate-800">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#0582BE] to-blue-600 flex items-center justify-center">
-            <span className="text-white font-bold text-lg">A</span>
+            <span className="text-white font-bold text-lg">FS</span>
           </div>
-          <h1 className="text-xl font-bold text-white">Onboarding</h1>
+          <h1 className="text-xl font-bold text-white">User Vision</h1>
         </div>
       </div>
 
@@ -36,15 +36,16 @@ export function Sidebar() {
           Dashboard
         </Link>
         <Link
-          to="/forms"
+          to="/suggestions"
           className={`block px-4 py-3 rounded-lg font-medium transition ${
-            isActive('/forms') || location.pathname.startsWith('/forms/')
+            isActive('/suggestions')
               ? 'bg-gradient-to-r from-[#0582BE] to-blue-600 text-white'
               : 'text-slate-300 hover:bg-slate-800'
           }`}
         >
-          Forms
+          Inbox
         </Link>
+        
         <Link
           to="/users"
           className={`block px-4 py-3 rounded-lg font-medium transition ${
@@ -53,17 +54,17 @@ export function Sidebar() {
               : 'text-slate-300 hover:bg-slate-800'
           }`}
         >
-          User Ontology
+          Users
         </Link>
         <Link
-          to="/suggestions"
+          to="/forms"
           className={`block px-4 py-3 rounded-lg font-medium transition ${
-            isActive('/suggestions')
+            isActive('/forms') || location.pathname.startsWith('/forms/')
               ? 'bg-gradient-to-r from-[#0582BE] to-blue-600 text-white'
               : 'text-slate-300 hover:bg-slate-800'
           }`}
         >
-          Suggestions Inbox
+          Forms
         </Link>
       </nav>
 

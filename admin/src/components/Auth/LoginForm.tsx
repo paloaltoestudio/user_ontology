@@ -52,7 +52,7 @@ export function LoginForm() {
               <span className="text-white font-bold text-lg">A</span>
             </div>
             <h1 className="text-3xl font-bold text-white mb-2">
-              Onboarding Admin
+              User Vision
             </h1>
             <p className="text-slate-400">Sign in to manage your forms</p>
           </div>
