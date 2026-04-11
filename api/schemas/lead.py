@@ -6,7 +6,12 @@ from datetime import datetime
 class LeadBase(BaseModel):
     """Base lead schema"""
 
-    email: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=255, description="Lead first name")
+    last_name: str = Field(..., min_length=1, max_length=255, description="Lead last name")
+    email: str = Field(..., max_length=255, description="Lead email")
+    phone: Optional[str] = Field(None, max_length=50, description="Lead phone number")
+    company: Optional[str] = Field(None, max_length=255, description="Lead company")
+    company_url: Optional[str] = Field(None, max_length=2048, description="Lead company website")
     status: str = Field(default="new", description="Lead status: new, contacted, qualified, demo_scheduled, negotiating, cold, rejected, user_signup, trial_started, customer")
     notes: Optional[str] = Field(None, max_length=2000)
 
@@ -14,8 +19,13 @@ class LeadBase(BaseModel):
 class LeadCreate(BaseModel):
     """Lead creation schema (form submission)"""
 
+    name: str = Field(..., min_length=1, max_length=255)
+    last_name: str = Field(..., min_length=1, max_length=255)
+    email: str = Field(..., max_length=255)
+    phone: Optional[str] = Field(None, max_length=50)
+    company: Optional[str] = Field(None, max_length=255)
+    company_url: Optional[str] = Field(None, max_length=2048)
     form_data: Dict[str, Any] = Field(..., description="Form field values submitted")
-    email: Optional[str] = None  # Can be extracted from form_data
 
 
 class LeadUpdate(BaseModel):

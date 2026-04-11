@@ -68,15 +68,15 @@ async def submit_form(
             detail="Form not found",
         )
 
-    # Extract email from form_data if not provided
-    email = lead_data.email
-    if not email and "email" in lead_data.form_data:
-        email = lead_data.form_data.get("email")
-
-    # Create lead
+    # Create lead with static fields
     lead = Lead(
         form_id=form_id,
-        email=email,
+        name=lead_data.name,
+        last_name=lead_data.last_name,
+        email=lead_data.email,
+        phone=lead_data.phone,
+        company=lead_data.company,
+        company_url=lead_data.company_url,
         form_data=lead_data.form_data,
         status="new",
     )

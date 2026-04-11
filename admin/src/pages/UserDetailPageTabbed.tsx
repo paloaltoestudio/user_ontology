@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Sidebar } from '../components/Sidebar'
 import { Icon } from '../components/Icon'
 import { ReactFlow, Background, Controls, useNodesState, useEdgesState } from '@xyflow/react'
@@ -13,7 +14,29 @@ import {
 } from '../components/UserJourneyNodes'
 import { userJourneyFlow } from '../data/mockUserData'
 import { mockUsers } from '../data/mockUsers'
-import { UserStatus, GoalStatus, SuggestionPriority, SuggestionType } from '../types/user'
+import { useToast } from '../hooks/useToast'
+import { leadsApi } from '../api/leads'
+import { formsApi } from '../api/forms'
+import { GoalStatus, SuggestionPriority, SuggestionType } from '../types/user'
+
+type LeadStatus = 'new' | 'contacted' | 'qualified' | 'activated' | 'inactive' | 'churned'
+
+interface Lead {
+  id: number
+  form_id: number
+  email: string
+  name?: string
+  last_name?: string
+  phone?: string
+  company?: string
+  company_url?: string
+  status: LeadStatus
+  form_data: Record<string, any>
+  notes: string | null
+  webhook_deliveries: any[]
+  created_at: string
+  updated_at: string
+}
 
 const nodeTypes = {
   userNode: UserNode,
@@ -28,24 +51,39 @@ type TabType = 'journey' | 'details'
 export function UserDetailPageTabbed() {
   const { userId } = useParams()
   const navigate = useNavigate()
+  const { success: showSuccess, error: showError } = useToast()
   const [activeTab, setActiveTab] = useState<TabType>('journey')
   const [suggestionTab, setSuggestionTab] = useState<'pending' | 'applied'>('pending')
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const [nodes, , onNodesChange] = useNodesState(userJourneyFlow.nodes)
   const [edges, , onEdgesChange] = useEdgesState(userJourneyFlow.edges)
 
-  // Get user from mockUsers for details/ontology view
-  const user = useMemo(() => {
-    return mockUsers.find((u) => u.id === Number(userId))
-  }, [userId])
+  // Fetch lead from API
+  const { data: user, isLoading, error } = useQuery({
+    queryKey: ['lead', userId],
+    queryFn: () => leadsApi.getLead(Number(userId)),
+  })
+
+  // Fetch form to get mapping (when user is loaded)
+  const { data: form } = useQuery({
+    queryKey: ['form', user?.form_id],
+    queryFn: () => formsApi.getForm(user!.form_id),
+    enabled: !!user?.form_id,
+  })
+
+  if (error) {
+    showError('Failed to load lead details')
+  }
 
   // Helper functions from UserOntologyDetailPage
-  const getStatusColor = (status: UserStatus) => {
-    const colors: Record<UserStatus, { bg: string; text: string; icon: string }> = {
+  const getStatusColor = (status: LeadStatus) => {
+    const colors: Record<LeadStatus, { bg: string; text: string; icon: string }> = {
+      new: { bg: 'bg-amber-500/10', text: 'text-amber-300', icon: 'star' },
+      contacted: { bg: 'bg-blue-500/10', text: 'text-blue-300', icon: 'message-circle' },
+      qualified: { bg: 'bg-purple-500/10', text: 'text-purple-300', icon: 'check' },
       activated: { bg: 'bg-emerald-500/10', text: 'text-emerald-300', icon: 'check-circle' },
-      in_progress: { bg: 'bg-blue-500/10', text: 'text-blue-300', icon: 'clock' },
       inactive: { bg: 'bg-slate-500/10', text: 'text-slate-300', icon: 'slash' },
-      lead_captured: { bg: 'bg-amber-500/10', text: 'text-amber-300', icon: 'star' },
       churned: { bg: 'bg-red-500/10', text: 'text-red-300', icon: 'trending-down' },
     }
     return colors[status]
@@ -88,11 +126,12 @@ export function UserDetailPageTabbed() {
     })
   }
 
-  const statusLabel: Record<UserStatus, string> = {
+  const statusLabel: Record<LeadStatus, string> = {
+    new: 'New',
+    contacted: 'Contacted',
+    qualified: 'Qualified',
     activated: 'Activated',
-    in_progress: 'In Progress',
     inactive: 'Inactive',
-    lead_captured: 'Lead Captured',
     churned: 'Churned',
   }
 
@@ -100,6 +139,54 @@ export function UserDetailPageTabbed() {
     completed: 'Completed',
     in_progress: 'In Progress',
     not_started: 'Not Started',
+  }
+
+  // Get mock user data as fallback for development
+  const mockUser = useMemo(() => {
+    return mockUsers.find((u) => u.id === Number(userId))
+  }, [userId])
+
+  // Get unmapped form data (fields that are not mapped to lead properties)
+  const getUnmappedFormData = useMemo(() => {
+    if (!user?.form_data || !form?.lead_field_mapping) {
+      return {}
+    }
+
+    const mapping = form.lead_field_mapping
+    const mappedValues = new Set<string>()
+
+    // Collect all form field names that are mapped to lead properties
+    Object.values(mapping).forEach((fieldName) => {
+      if (fieldName) mappedValues.add(fieldName)
+    })
+
+    // Filter out mapped fields from form_data
+    const unmapped: Record<string, any> = {}
+    Object.entries(user.form_data).forEach(([key, value]) => {
+      if (!mappedValues.has(key)) {
+        unmapped[key] = value
+      }
+    })
+
+    return unmapped
+  }, [user?.form_data, form?.lead_field_mapping])
+
+  // Handle delete lead
+  const handleDeleteLead = async () => {
+    if (!window.confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      setIsDeleting(true)
+      await leadsApi.deleteLead(Number(userId))
+      showSuccess('Lead deleted successfully')
+      navigate('/users')
+    } catch (err) {
+      showError('Failed to delete lead')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const getSuggestionPriorityColor = (priority: SuggestionPriority) => {
@@ -159,6 +246,19 @@ export function UserDetailPageTabbed() {
     })
   }, [user?.suggestions, suggestionTab])
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+        <div className="flex h-screen">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
@@ -166,12 +266,12 @@ export function UserDetailPageTabbed() {
           <Sidebar />
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <p className="text-slate-400 mb-4">User not found</p>
+              <p className="text-slate-400 mb-4">Lead not found</p>
               <button
                 onClick={() => navigate('/users')}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
               >
-                Back to Users
+                Back to Leads
               </button>
             </div>
           </div>
@@ -194,18 +294,20 @@ export function UserDetailPageTabbed() {
                   onClick={() => navigate('/users')}
                   className="text-blue-400 hover:text-blue-300 text-sm font-medium flex items-center gap-2"
                 >
-                  ← Back to Users
+                  ← Back to Leads
                 </button>
               </div>
             </div>
           </div>
 
-          {/* User Summary Card - Always Visible (Compact Inline) */}
+          {/* Lead Summary Card - Always Visible (Compact Inline) */}
           <div className="bg-slate-900/50 backdrop-blur-md border-b border-slate-800/50 px-8 py-3">
             <div className="max-w-7xl mx-auto">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2 min-w-0">
-                  <h2 className="text-lg font-bold text-white whitespace-nowrap">{user.name}</h2>
+                  <h2 className="text-lg font-bold text-white whitespace-nowrap">
+                    {user.name || user.email}
+                  </h2>
                   <span className="text-slate-500 text-sm">·</span>
                   <p className="text-slate-400 text-sm truncate">{user.email}</p>
                   {user.company && (
@@ -287,177 +389,40 @@ export function UserDetailPageTabbed() {
                 <div className="p-8">
                   <div className="max-w-5xl mx-auto space-y-8">
 
-                    {/* Key Metrics Section - At Top */}
+                    {/* Lead Information Section */}
                     <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
-                      <h2 className="text-lg font-bold text-white mb-6">Key Metrics</h2>
-                      <div className="grid grid-cols-3 gap-6">
+                      <h2 className="text-lg font-bold text-white mb-6">Lead Information</h2>
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div>
-                          <p className="text-slate-400 text-xs uppercase tracking-wide mb-2">Registered</p>
-                          <p className="text-white font-semibold text-lg">{formatDate(user.registeredAt)}</p>
+                          <p className="text-slate-400 text-xs uppercase tracking-wide mb-2">Submitted</p>
+                          <p className="text-white font-semibold text-lg">{formatDate(user.created_at)}</p>
                         </div>
                         <div>
-                          <p className="text-slate-400 text-xs uppercase tracking-wide mb-2">Last Active</p>
-                          <p className="text-white font-semibold text-lg">{formatDate(user.lastActive)}</p>
+                          <p className="text-slate-400 text-xs uppercase tracking-wide mb-2">Last Updated</p>
+                          <p className="text-white font-semibold text-lg">{formatDate(user.updated_at)}</p>
                         </div>
                         <div>
-                          <p className="text-slate-400 text-xs uppercase tracking-wide mb-2">Activation Rate</p>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-2 bg-slate-700/50 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full"
-                                style={{ width: `${user.activationRate}%` }}
-                              />
-                            </div>
-                            <span className="text-white font-semibold text-sm">{user.activationRate}%</span>
-                          </div>
+                          <p className="text-slate-400 text-xs uppercase tracking-wide mb-2">Lead Status</p>
+                          <p className={`font-semibold text-lg ${getStatusColor(user.status).text}`}>
+                            {statusLabel[user.status]}
+                          </p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Qualification Card */}
-                    {user.qualification && (
-                      <div className={`bg-gradient-to-br ${getQualificationColor(user.qualification.status).bg} border border-slate-700/30 rounded-xl p-8 backdrop-blur-sm`}>
-                        <div className="flex items-start justify-between mb-6">
-                          <div>
-                            <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-3">
-                              <Icon type="target" size={1.25} color="#0582BE" />
-                              Lead Qualification
-                            </h2>
-                            <p className="text-slate-400 text-sm">AI-powered assessment</p>
-                          </div>
-                          <div className={`px-4 py-2 rounded-lg font-semibold text-sm ${getQualificationColor(user.qualification.status).badgeBg}`}>
-                            {user.qualification.status.charAt(0).toUpperCase() + user.qualification.status.slice(1)}
-                          </div>
-                        </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                          {/* Gauge & Score */}
-                          <div className="flex flex-col items-center justify-center">
-                            <div className="relative w-40 h-24 mb-4">
-                              <svg viewBox="0 0 200 120" className="w-full h-full">
-                                <path
-                                  d="M 20 100 A 80 80 0 0 1 180 100"
-                                  fill="none"
-                                  stroke="#334155"
-                                  strokeWidth="12"
-                                  strokeLinecap="round"
-                                />
-                                <path
-                                  d="M 20 100 A 80 80 0 0 1 180 100"
-                                  fill="none"
-                                  stroke={
-                                    user.qualification.status === 'qualified'
-                                      ? '#10B981'
-                                      : user.qualification.status === 'warm'
-                                        ? '#F59E0B'
-                                        : '#64748B'
-                                  }
-                                  strokeWidth="12"
-                                  strokeLinecap="round"
-                                  strokeDasharray={`${(user.qualification.score / 100) * 251.2} 251.2`}
-                                />
-                              </svg>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <span className="text-4xl font-bold text-white">{user.qualification.score}</span>
-                                <span className="text-xs text-slate-400">/ 100</span>
-                              </div>
-                            </div>
-                            <p className="text-xs text-slate-400 text-center">Confidence: {user.qualification.confidence}%</p>
-                          </div>
-
-                          {/* Factors & Insights */}
-                          <div className="lg:col-span-2">
-                            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-4">Qualification Factors</h3>
-                            <div className="space-y-3">
-                              {user.qualification.factors.map((factor, index) => (
-                                <div key={index} className="flex items-center gap-3">
-                                  <div className="flex-1">
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="text-sm text-white">{factor.label}</span>
-                                      <span className="text-xs text-slate-500">{factor.weight}%</span>
-                                    </div>
-                                    <div className="h-2 bg-slate-700/50 rounded-full overflow-hidden">
-                                      <div
-                                        className={`h-full rounded-full transition-all ${
-                                          factor.status === 'positive'
-                                            ? 'bg-emerald-500'
-                                            : factor.status === 'negative'
-                                              ? 'bg-red-500'
-                                              : 'bg-slate-500'
-                                        }`}
-                                        style={{ width: `${factor.weight}%` }}
-                                      />
-                                    </div>
-                                  </div>
-                                  <Icon
-                                    type={factor.status === 'positive' ? 'check-circle' : factor.status === 'negative' ? 'x-circle' : 'minus-circle'}
-                                    size={0.9}
-                                    color={
-                                      factor.status === 'positive' ? '#10B981' : factor.status === 'negative' ? '#EF4444' : '#64748B'
-                                    }
-                                  />
-                                </div>
-                              ))}
-                            </div>
-
-                            {/* AI Insights */}
-                            {user.qualification.insights && user.qualification.insights.length > 0 && (
-                              <div className="mt-6 pt-4 border-t border-slate-700/30">
-                                <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide mb-3">AI Insights</h3>
-                                <div className="space-y-2">
-                                  {user.qualification.insights.map((insight) => {
-                                    const priorityColor =
-                                      insight.priority === 'urgent' ? 'border-red-500/50 bg-red-500/10' :
-                                      insight.priority === 'high' ? 'border-amber-500/50 bg-amber-500/10' :
-                                      insight.priority === 'medium' ? 'border-blue-500/50 bg-blue-500/10' :
-                                      'border-slate-500/50 bg-slate-500/10'
-
-                                    const priorityIconColor =
-                                      insight.priority === 'urgent' ? '#EF4444' :
-                                      insight.priority === 'high' ? '#F59E0B' :
-                                      insight.priority === 'medium' ? '#3B82F6' :
-                                      '#64748B'
-
-                                    return (
-                                      <div key={insight.id} className={`border-l-2 rounded px-3 py-2.5 ${priorityColor}`}>
-                                        <div className="flex items-start gap-2">
-                                          <Icon
-                                            type="lightbulb"
-                                            size={0.85}
-                                            color={priorityIconColor}
-                                            className="mt-0.5 flex-shrink-0"
-                                          />
-                                          <p className="text-sm text-slate-200 leading-snug">{insight.text}</p>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Trend & Timestamp */}
-                            <div className="mt-6 pt-4 border-t border-slate-700/30 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Icon
-                                  type={getTrendIcon(user.qualification.trend).icon as any}
-                                  size={1}
-                                  color={getTrendIcon(user.qualification.trend).color}
-                                />
-                                <span className="text-xs text-slate-400">
-                                  Trend: {user.qualification.trend.charAt(0).toUpperCase() + user.qualification.trend.slice(1)}
-                                </span>
-                              </div>
-                              <span className="text-xs text-slate-500">
-                                Assessed {formatDateTime(user.qualification.assessedAt)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                    {/* Notes Section */}
+                    {user.notes && (
+                      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
+                        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                          <Icon type="sticky-note" size={1.25} color="#0582BE" />
+                          Notes
+                        </h2>
+                        <p className="text-slate-300">{user.notes}</p>
                       </div>
                     )}
 
-                    {/* Action Buttons */}
+{/* Action Buttons */}
                     <div className="flex gap-3">
                       <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition">
                         Send Email
@@ -468,78 +433,83 @@ export function UserDetailPageTabbed() {
                       <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition">
                         Manage Access
                       </button>
+                      <button
+                        onClick={handleDeleteLead}
+                        disabled={isDeleting}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium rounded-lg transition ml-auto"
+                      >
+                        {isDeleting ? 'Deleting...' : 'Delete Lead'}
+                      </button>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      {/* Goals Section */}
-                      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
-                        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                          <Icon type="target" size={1.25} color="#0582BE" />
-                          Goals & Milestones
-                        </h2>
+                      {/* Goals Section - Uses mock data for now */}
+                      {mockUser?.goals && (
+                        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
+                          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                            <Icon type="target" size={1.25} color="#0582BE" />
+                            Goals & Milestones
+                          </h2>
 
-                        <div className="space-y-4">
-                          {user.goals.map((goal) => (
-                            <div
-                              key={goal.id}
-                              className={`p-4 rounded-lg border border-slate-700/30 ${getGoalStatusColor(goal.status).bg}`}
-                            >
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
-                                  <p className="font-semibold text-white">{goal.title}</p>
-                                  <p className="text-sm text-slate-400 mt-1">{goal.description}</p>
+                          <div className="space-y-4">
+                            {mockUser.goals.map((goal) => (
+                              <div
+                                key={goal.id}
+                                className={`p-4 rounded-lg border border-slate-700/30 ${getGoalStatusColor(goal.status).bg}`}
+                              >
+                                <div className="flex items-start justify-between mb-2">
+                                  <div>
+                                    <p className="font-semibold text-white">{goal.title}</p>
+                                    <p className="text-sm text-slate-400 mt-1">{goal.description}</p>
+                                  </div>
+                                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${getGoalStatusColor(goal.status).bg} ${getGoalStatusColor(goal.status).text} whitespace-nowrap`}>
+                                    {goalStatusLabel[goal.status]}
+                                  </span>
                                 </div>
-                                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${getGoalStatusColor(goal.status).bg} ${getGoalStatusColor(goal.status).text} whitespace-nowrap`}>
-                                  {goalStatusLabel[goal.status]}
-                                </span>
+                                {goal.dueDate && (
+                                  <p className="text-xs text-slate-400 mt-3">Due: {formatDate(goal.dueDate)}</p>
+                                )}
+                                {goal.completedDate && (
+                                  <p className="text-xs text-emerald-400 mt-3">Completed: {formatDate(goal.completedDate)}</p>
+                                )}
                               </div>
-                              {goal.dueDate && (
-                                <p className="text-xs text-slate-400 mt-3">Due: {formatDate(goal.dueDate)}</p>
-                              )}
-                              {goal.completedDate && (
-                                <p className="text-xs text-emerald-400 mt-3">Completed: {formatDate(goal.completedDate)}</p>
-                              )}
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
-                      {/* Metadata Section */}
+                      {/* User Information Section - Shows Unmapped Form Data Only */}
                       <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
                         <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
                           <Icon type="info" size={1.25} color="#0582BE" />
                           User Information
                         </h2>
 
-                        <div className="space-y-4">
-                          {user.metadata && (
-                            <>
-                              {user.metadata.country && (
-                                <div>
-                                  <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Country</p>
-                                  <p className="text-white">{user.metadata.country}</p>
+                        {Object.keys(getUnmappedFormData).length > 0 ? (
+                          <div className="space-y-4">
+                            {Object.entries(getUnmappedFormData).map(([key, value]) => {
+                              // Format key to be more readable (e.g., "custom_field" -> "Custom Field")
+                              const formattedKey = key
+                                .split('_')
+                                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                .join(' ')
+
+                              return (
+                                <div key={key}>
+                                  <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">{formattedKey}</p>
+                                  <p className="text-white break-words">{String(value) || '—'}</p>
                                 </div>
-                              )}
-                              {user.metadata.industry && (
-                                <div>
-                                  <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Industry</p>
-                                  <p className="text-white">{user.metadata.industry}</p>
-                                </div>
-                              )}
-                              {user.metadata.teamSize && (
-                                <div>
-                                  <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Team Size</p>
-                                  <p className="text-white">{user.metadata.teamSize}</p>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-slate-400">No additional data</p>
+                        )}
                       </div>
                     </div>
 
-                    {/* Suggestions Section */}
-                    {user.suggestions && user.suggestions.length > 0 && (
+                    {/* Suggestions Section - Uses mock data for now */}
+                    {mockUser?.suggestions && mockUser.suggestions.length > 0 && (
                       <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
                         <div className="flex items-center justify-between mb-6">
                           <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -644,37 +614,39 @@ export function UserDetailPageTabbed() {
                       </div>
                     )}
 
-                    {/* Activity Timeline */}
-                    <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
-                      <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                        <Icon type="activity" size={1.25} color="#0582BE" />
-                        Activity Timeline
-                      </h2>
+                    {/* Activity Timeline - Uses mock data for now */}
+                    {mockUser?.activities && (
+                      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
+                        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                          <Icon type="activity" size={1.25} color="#0582BE" />
+                          Activity Timeline
+                        </h2>
 
-                      <div className="space-y-4">
-                        {user.activities.map((activity, index) => (
-                          <div key={activity.id} className="flex gap-4">
-                            <div className="relative">
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center flex-shrink-0">
-                                <Icon
-                                  type={getActivityIcon(activity.type) as any}
-                                  size={1}
-                                  color="white"
-                                />
+                        <div className="space-y-4">
+                          {mockUser.activities.map((activity, index) => (
+                            <div key={activity.id} className="flex gap-4">
+                              <div className="relative">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center flex-shrink-0">
+                                  <Icon
+                                    type={getActivityIcon(activity.type) as any}
+                                    size={1}
+                                    color="white"
+                                  />
+                                </div>
+                                {index < mockUser.activities.length - 1 && (
+                                  <div className="absolute left-1/2 top-10 -translate-x-1/2 w-0.5 h-4 bg-slate-700/50" />
+                                )}
                               </div>
-                              {index < user.activities.length - 1 && (
-                                <div className="absolute left-1/2 top-10 -translate-x-1/2 w-0.5 h-4 bg-slate-700/50" />
-                              )}
+                              <div className="flex-1 pb-4">
+                                <p className="font-semibold text-white">{activity.title}</p>
+                                <p className="text-sm text-slate-400 mt-1">{activity.description}</p>
+                                <p className="text-xs text-slate-500 mt-2">{formatDateTime(activity.timestamp)}</p>
+                              </div>
                             </div>
-                            <div className="flex-1 pb-4">
-                              <p className="font-semibold text-white">{activity.title}</p>
-                              <p className="text-sm text-slate-400 mt-1">{activity.description}</p>
-                              <p className="text-xs text-slate-500 mt-2">{formatDateTime(activity.timestamp)}</p>
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -2,15 +2,16 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { formsApi } from '../api/forms'
-import { Form } from '../types/form'
+import { Form, LeadFieldMapping } from '../types/form'
 import { Sidebar } from '../components/Sidebar'
 import { StepBuilder } from '../components/Forms/StepBuilder'
 import { Icon } from '../components/Icon'
 import { WebhookManager } from '../components/Forms/WebhookManager'
 import { EmbedModal } from '../components/Forms/EmbedModal'
+import { LeadFieldMappingUI } from '../components/Forms/LeadFieldMappingUI'
 import { useToast } from '../hooks/useToast'
 
-type TabType = 'general' | 'webhooks' | 'steps'
+type TabType = 'general' | 'webhooks' | 'mapping' | 'steps'
 
 export function FormDetailPage() {
   const { formId } = useParams()
@@ -24,6 +25,7 @@ export function FormDetailPage() {
   const [editDescription, setEditDescription] = useState('')
   const [editWebhooks, setEditWebhooks] = useState<string[]>([])
   const [editDisplayAsSteps, setEditDisplayAsSteps] = useState(false)
+  const [editMapping, setEditMapping] = useState<LeadFieldMapping>({})
   const [apiError, setApiError] = useState('')
   const [copiedId, setCopiedId] = useState(false)
   const [isEmbedModalOpen, setIsEmbedModalOpen] = useState(false)
@@ -39,6 +41,7 @@ export function FormDetailPage() {
       setCurrentForm(form)
       setEditWebhooks(form.webhooks || [])
       setEditDisplayAsSteps(form.display_as_steps || false)
+      setEditMapping(form.lead_field_mapping || {})
     }
   }, [form])
 
@@ -104,6 +107,49 @@ export function FormDetailPage() {
     setTimeout(() => setCopiedId(false), 2000)
   }
 
+  // Validation functions
+  const getTotalFormFields = () => {
+    let count = 0
+    displayForm.steps.forEach((step) => {
+      count += step.fields.length
+    })
+    return count
+  }
+
+  const getRequiredMappings = () => {
+    return ['name', 'last_name', 'email']
+  }
+
+  const getCompletedMappings = () => {
+    const requiredFields = getRequiredMappings()
+    return requiredFields.filter((field) => {
+      return editMapping[field as keyof LeadFieldMapping]
+    })
+  }
+
+  const isMappingComplete = () => {
+    return getCompletedMappings().length === getRequiredMappings().length
+  }
+
+  const canShareForm = () => {
+    return getTotalFormFields() > 0 && isMappingComplete()
+  }
+
+  const getValidationMessage = () => {
+    const fieldCount = getTotalFormFields()
+    const mappingComplete = isMappingComplete()
+
+    if (fieldCount === 0) {
+      return 'Add at least one field to the form'
+    }
+    if (!mappingComplete) {
+      const completed = getCompletedMappings().length
+      const total = getRequiredMappings().length
+      return `Complete lead mapping (${completed}/${total} required fields)`
+    }
+    return null
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -143,7 +189,16 @@ export function FormDetailPage() {
     { id: 'general', label: 'General' },
     { id: 'webhooks', label: 'Webhooks' },
     { id: 'steps', label: 'Steps' },
+    { id: 'mapping', label: 'Lead Mapping' },
   ]
+
+  const handleSaveMapping = () => {
+    updateFormMutation.mutate({
+      name: displayForm.name,
+      description: displayForm.description,
+      lead_field_mapping: editMapping,
+    })
+  }
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -184,14 +239,30 @@ export function FormDetailPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setIsEmbedModalOpen(true)}
-                  className="px-3 py-2 text-sm font-medium text-[#0582BE] hover:text-blue-400 transition flex items-center gap-2"
-                  title="Share form"
-                >
-                  <Icon type="copy" size={0.75} />
-                  Share
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (canShareForm()) {
+                        setIsEmbedModalOpen(true)
+                      }
+                    }}
+                    disabled={!canShareForm()}
+                    className={`px-3 py-2 text-sm font-medium transition flex items-center gap-2 ${
+                      canShareForm()
+                        ? 'text-[#0582BE] hover:text-blue-400 cursor-pointer'
+                        : 'text-slate-500 cursor-not-allowed opacity-50'
+                    }`}
+                    title={getValidationMessage() || 'Share form'}
+                  >
+                    <Icon type="copy" size={0.75} />
+                    Share
+                  </button>
+                  {!canShareForm() && (
+                    <div className="absolute right-0 top-full mt-2 hidden group-hover:block z-10 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs text-slate-300 whitespace-nowrap">
+                      {getValidationMessage()}
+                    </div>
+                  )}
+                </div>
                 <span
                   className={`px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap ${
                     displayForm.is_active
@@ -372,6 +443,35 @@ export function FormDetailPage() {
                     form={displayForm}
                     onFormUpdate={(updatedForm) => setCurrentForm(updatedForm)}
                   />
+                </div>
+              )}
+
+              {/* Lead Mapping Tab */}
+              {activeTab === 'mapping' && (
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-8">
+                  <h2 className="text-xl font-semibold text-white mb-6">Lead Field Mapping</h2>
+                  <p className="text-slate-400 text-sm mb-6">
+                    Map your form fields to lead properties. This ensures that form submissions are properly captured with structured lead data.
+                  </p>
+                  <LeadFieldMappingUI
+                    form={displayForm}
+                    mapping={editMapping}
+                    onMappingChange={setEditMapping}
+                  />
+                  {apiError && (
+                    <div className="p-3 bg-red-900/20 border border-red-700/50 rounded-lg mt-4">
+                      <p className="text-sm text-red-300">{apiError}</p>
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-6">
+                    <button
+                      onClick={handleSaveMapping}
+                      disabled={updateFormMutation.isPending}
+                      className="px-4 py-2 bg-gradient-to-r from-[#0582BE] to-blue-600 hover:from-[#0582BE] hover:to-blue-700 disabled:opacity-50 text-white text-sm rounded transition font-medium"
+                    >
+                      {updateFormMutation.isPending ? 'Saving...' : 'Save Mapping'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

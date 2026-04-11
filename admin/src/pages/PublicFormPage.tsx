@@ -106,7 +106,15 @@ export function PublicFormPage() {
 
     if (!form) return
 
-    // Validate required fields
+    // Phase 5: Validate lead field mapping is complete
+    const mapping = form.lead_field_mapping || {}
+    if (!mapping.name || !mapping.last_name || !mapping.email) {
+      showError('This form is not properly configured. Please contact the form owner.')
+      console.error('Form missing required lead field mappings')
+      return
+    }
+
+    // Validate required form fields
     console.log('Validating all form steps...')
     for (const step of form.steps) {
       for (const field of step.fields) {
@@ -114,6 +122,32 @@ export function PublicFormPage() {
           showError(`${field.field_name} is required`)
           return
         }
+      }
+    }
+
+    // Phase 5: Validate mapped fields are not empty
+    const allFields = form.steps.flatMap(s => s.fields)
+    const mappedFieldIds = new Set<number>()
+
+    // Collect all field IDs that are mapped to lead properties
+    const fieldNameToId = new Map<string, number>()
+    allFields.forEach(field => {
+      fieldNameToId.set(field.field_name, field.id)
+    })
+
+    // Validate required lead field mappings have values
+    const requiredLeadMappings = [
+      { key: 'name' as const, label: 'First Name' },
+      { key: 'last_name' as const, label: 'Last Name' },
+      { key: 'email' as const, label: 'Email' },
+    ]
+
+    for (const { key, label } of requiredLeadMappings) {
+      const fieldName = mapping[key]
+      const fieldId = fieldNameToId.get(fieldName!)
+      if (fieldId && !formData[fieldId]) {
+        showError(`${label} is required`)
+        return
       }
     }
 
@@ -130,13 +164,36 @@ export function PublicFormPage() {
         }
       }
 
-      // Extract email if present
-      const emailField = form.steps
-        .flatMap(s => s.fields)
-        .find(f => f.field_type === 'email' && formData[f.id])
-      const email = emailField ? formData[emailField.id] : undefined
+      // Phase 4: Extract lead data using field mapping
+      const leadData: Record<string, any> = {}
+      const mapping = form.lead_field_mapping || {}
 
-      // Submit to API
+      // Map required lead fields
+      if (mapping.name) {
+        leadData.name = transformedData[mapping.name] || ''
+      }
+      if (mapping.last_name) {
+        leadData.last_name = transformedData[mapping.last_name] || ''
+      }
+      if (mapping.email) {
+        leadData.email = transformedData[mapping.email] || ''
+      }
+
+      // Map optional lead fields (only if mapping exists)
+      if (mapping.phone) {
+        leadData.phone = transformedData[mapping.phone] || null
+      }
+      if (mapping.company) {
+        leadData.company = transformedData[mapping.company] || null
+      }
+      if (mapping.company_url) {
+        leadData.company_url = transformedData[mapping.company_url] || null
+      }
+
+      console.log('Extracted lead data:', leadData)
+      console.log('Full form data:', transformedData)
+
+      // Submit to API with both structured lead data and full form data
       const response = await fetch(
         `${window.location.origin}/api/v1/leads/submit/${form.id}`,
         {
@@ -145,7 +202,12 @@ export function PublicFormPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            email,
+            name: leadData.name,
+            last_name: leadData.last_name,
+            email: leadData.email,
+            phone: leadData.phone,
+            company: leadData.company,
+            company_url: leadData.company_url,
             form_data: transformedData,
           }),
         }

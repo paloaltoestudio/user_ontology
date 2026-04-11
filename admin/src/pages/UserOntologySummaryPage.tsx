@@ -1,24 +1,55 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Sidebar } from '../components/Sidebar'
 import { Icon } from '../components/Icon'
-import { mockUsers } from '../data/mockUsers'
-import { User, UserStatus } from '../types/user'
+import { useToast } from '../hooks/useToast'
+import { leadsApi } from '../api/leads'
 
-type FilterStatus = UserStatus | 'all'
+type LeadStatus = 'new' | 'contacted' | 'qualified' | 'activated' | 'inactive' | 'churned'
+type FilterStatus = LeadStatus | 'all'
+
+interface Lead {
+  id: number
+  form_id: number
+  email: string
+  name?: string
+  last_name?: string
+  phone?: string
+  company?: string
+  company_url?: string
+  status: LeadStatus
+  form_data: Record<string, any>
+  notes: string | null
+  webhook_deliveries: any[]
+  created_at: string
+  updated_at: string
+}
 
 export function UserOntologySummaryPage() {
   const navigate = useNavigate()
+  const { error: showError } = useToast()
   const [selectedFilter, setSelectedFilter] = useState<FilterStatus>('all')
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Fetch leads from API
+  const { data: leads = [], isLoading, error } = useQuery({
+    queryKey: ['leads'],
+    queryFn: () => leadsApi.listLeads(),
+  })
+
+  // Handle API errors
+  if (error) {
+    showError('Failed to load leads')
+  }
+
   // Calculate metrics
   const metrics = useMemo(() => {
-    const total = mockUsers.length
-    const activated = mockUsers.filter((u) => u.status === 'activated').length
-    const inProgress = mockUsers.filter((u) => u.status === 'in_progress').length
-    const inactive = mockUsers.filter((u) => u.status === 'inactive').length
-    const churned = mockUsers.filter((u) => u.status === 'churned').length
+    const total = leads.length
+    const activated = leads.filter((u) => u.status === 'activated').length
+    const inProgress = leads.filter((u) => u.status === 'contacted' || u.status === 'qualified').length
+    const inactive = leads.filter((u) => u.status === 'inactive').length
+    const churned = leads.filter((u) => u.status === 'churned').length
 
     return {
       total,
@@ -26,34 +57,35 @@ export function UserOntologySummaryPage() {
       inProgress,
       inactive,
       churned,
-      activationRate: Math.round(
-        (activated / total) * 100
-      ),
+      activationRate: total > 0 ? Math.round((activated / total) * 100) : 0,
     }
-  }, [])
+  }, [leads])
 
-  // Filter and search users
+  // Filter and search leads
   const filteredUsers = useMemo(() => {
-    return mockUsers
-      .filter(
-        (user) =>
-          selectedFilter === 'all' || user.status === selectedFilter
-      )
-      .filter(
-        (user) =>
-          user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          user.company?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-      .sort((a, b) => new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime())
-  }, [selectedFilter, searchQuery])
+    return leads
+      .filter((lead) => {
+        if (selectedFilter === 'all') return true
+        return lead.status === selectedFilter
+      })
+      .filter((lead) => {
+        const searchLower = searchQuery.toLowerCase()
+        return (
+          lead.email.toLowerCase().includes(searchLower) ||
+          (lead.name && lead.name.toLowerCase().includes(searchLower)) ||
+          (lead.company && lead.company.toLowerCase().includes(searchLower))
+        )
+      })
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+  }, [leads, selectedFilter, searchQuery])
 
-  const getStatusColor = (status: UserStatus) => {
-    const colors: Record<UserStatus, { bg: string; text: string; badge: string }> = {
+  const getStatusColor = (status: LeadStatus) => {
+    const colors: Record<LeadStatus, { bg: string; text: string; badge: string }> = {
+      new: { bg: 'bg-amber-500/10', text: 'text-amber-300', badge: 'bg-amber-500/20' },
+      contacted: { bg: 'bg-blue-500/10', text: 'text-blue-300', badge: 'bg-blue-500/20' },
+      qualified: { bg: 'bg-purple-500/10', text: 'text-purple-300', badge: 'bg-purple-500/20' },
       activated: { bg: 'bg-emerald-500/10', text: 'text-emerald-300', badge: 'bg-emerald-500/20' },
-      in_progress: { bg: 'bg-blue-500/10', text: 'text-blue-300', badge: 'bg-blue-500/20' },
       inactive: { bg: 'bg-slate-500/10', text: 'text-slate-300', badge: 'bg-slate-500/20' },
-      lead_captured: { bg: 'bg-amber-500/10', text: 'text-amber-300', badge: 'bg-amber-500/20' },
       churned: { bg: 'bg-red-500/10', text: 'text-red-300', badge: 'bg-red-500/20' },
     }
     return colors[status]
@@ -72,11 +104,12 @@ export function UserOntologySummaryPage() {
   }
 
   const statusLabels: Record<FilterStatus, string> = {
-    all: 'All Users',
+    all: 'All Leads',
+    new: 'New',
+    contacted: 'Contacted',
+    qualified: 'Qualified',
     activated: 'Activated',
-    in_progress: 'In Progress',
     inactive: 'Inactive',
-    lead_captured: 'Lead Captured',
     churned: 'Churned',
   }
 
@@ -98,6 +131,14 @@ export function UserOntologySummaryPage() {
           <main className="flex-1 overflow-auto">
             <div className="p-8">
               <div className="max-w-7xl mx-auto space-y-8">
+                {isLoading && (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                )}
+
+                {!isLoading && (
+                  <>
                 {/* Metrics Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   <MetricCard
@@ -136,7 +177,7 @@ export function UserOntologySummaryPage() {
                 {/* Filters and Search */}
                 <div className="space-y-4">
                   <div className="flex gap-2 flex-wrap">
-                    {(['all', 'activated', 'in_progress', 'lead_captured', 'inactive', 'churned'] as const).map(
+                    {(['all', 'new', 'contacted', 'qualified', 'activated', 'inactive', 'churned'] as const).map(
                       (status) => (
                         <button
                           key={status}
@@ -196,24 +237,26 @@ export function UserOntologySummaryPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredUsers.map((user) => (
+                      {filteredUsers.map((lead) => (
                         <tr
-                          key={user.id}
+                          key={lead.id}
                           className="border-b border-slate-700/20 hover:bg-slate-800/20 transition"
                         >
                           <td className="px-6 py-4">
                             <div>
-                              <p className="text-sm font-medium text-white">{user.name}</p>
-                              <p className="text-xs text-slate-400">{user.email}</p>
+                              <p className="text-sm font-medium text-white">
+                                {lead.name || '—'}
+                              </p>
+                              <p className="text-xs text-slate-400">{lead.email}</p>
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <p className="text-sm text-slate-300">{user.company || '—'}</p>
+                            <p className="text-sm text-slate-300">{lead.company || '—'}</p>
                           </td>
                           <td className="px-6 py-4">
-                            <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(user.status).badge}`}>
-                              <span className={getStatusColor(user.status).text}>
-                                {statusLabels[user.status as FilterStatus]}
+                            <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(lead.status).badge}`}>
+                              <span className={getStatusColor(lead.status).text}>
+                                {statusLabels[lead.status as FilterStatus]}
                               </span>
                             </div>
                           </td>
@@ -222,18 +265,18 @@ export function UserOntologySummaryPage() {
                               <div className="w-24 h-2 bg-slate-700/50 rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full"
-                                  style={{ width: `${user.activationRate}%` }}
+                                  style={{ width: `${lead.status === 'activated' ? 100 : 0}%` }}
                                 />
                               </div>
-                              <span className="text-xs text-slate-400">{user.activationRate}%</span>
+                              <span className="text-xs text-slate-400">{lead.status === 'activated' ? 100 : 0}%</span>
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <p className="text-sm text-slate-400">{formatDate(user.lastActive)}</p>
+                            <p className="text-sm text-slate-400">{formatDate(lead.updated_at)}</p>
                           </td>
                           <td className="px-6 py-4">
                             <button
-                              onClick={() => navigate(`/users/${user.id}`)}
+                              onClick={() => navigate(`/users/${lead.id}`)}
                               className="px-3 py-1 text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition"
                             >
                               View Details →
@@ -246,10 +289,12 @@ export function UserOntologySummaryPage() {
 
                   {filteredUsers.length === 0 && (
                     <div className="px-6 py-12 text-center">
-                      <p className="text-slate-400">No users found</p>
+                      <p className="text-slate-400">No leads found</p>
                     </div>
                   )}
                 </div>
+                  </>
+                )}
               </div>
             </div>
           </main>

@@ -15,6 +15,7 @@ class Form(Base):
     is_active = Column(Boolean, default=False, nullable=False)
     display_as_steps = Column(Boolean, default=True, nullable=False)  # If true, show form as steps; if false, show all fields at once
     webhooks = Column(JSON, default=[], nullable=False)  # List of webhook URLs to send form data to
+    lead_field_mapping = Column(JSON, default={}, nullable=False)  # Maps lead properties to form field names: {"name": "field_name", "email": "contact_email", ...}
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

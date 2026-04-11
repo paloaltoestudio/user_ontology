@@ -11,7 +11,14 @@ class Lead(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     form_id = Column(Integer, ForeignKey("forms.id"), nullable=False, index=True)
-    email = Column(String(255), index=True, nullable=True)  # Extracted from form data for quick access
+    # Static lead information fields
+    name = Column(String(255), nullable=False, index=True)
+    last_name = Column(String(255), nullable=False, index=True)
+    email = Column(String(255), index=True, nullable=False)  # Required static field
+    phone = Column(String(50), nullable=True)
+    company = Column(String(255), nullable=True)
+    company_url = Column(String(2048), nullable=True)
+    # Form tracking
     status = Column(String(50), default="new", nullable=False, index=True)  # new, contacted, qualified, etc.
     form_data = Column(JSON, nullable=False)  # All submitted field values
     notes = Column(String(2000), nullable=True)  # Admin notes about the lead

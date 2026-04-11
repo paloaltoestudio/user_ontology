@@ -23,6 +23,15 @@ export interface FormStep {
   updated_at: string
 }
 
+export interface LeadFieldMapping {
+  name?: string
+  last_name?: string
+  email?: string
+  phone?: string
+  company?: string
+  company_url?: string
+}
+
 export interface Form {
   id: number
   name: string
@@ -30,6 +39,7 @@ export interface Form {
   is_active: boolean
   webhooks?: string[]
   display_as_steps: boolean
+  lead_field_mapping?: LeadFieldMapping
   steps: FormStep[]
   created_at: string
   updated_at: string
@@ -41,6 +51,7 @@ export interface FormCreateRequest {
   is_active?: boolean
   display_as_steps?: boolean
   webhooks?: string[]
+  lead_field_mapping?: LeadFieldMapping
   steps?: Array<{
     step_number: number
     title: string
@@ -58,3 +69,13 @@ export interface FormCreateRequest {
 }
 
 export type FieldType = 'text' | 'email' | 'password' | 'number' | 'textarea' | 'select' | 'checkbox' | 'date'
+
+// Lead field configuration for mapping
+export const LEAD_FIELDS = {
+  name: { label: 'First Name', required: true },
+  last_name: { label: 'Last Name', required: true },
+  email: { label: 'Email', required: true },
+  phone: { label: 'Phone', required: false },
+  company: { label: 'Company', required: false },
+  company_url: { label: 'Company URL', required: false },
+} as const

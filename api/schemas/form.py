@@ -87,6 +87,7 @@ class FormBase(BaseModel):
     is_active: bool = False
     display_as_steps: bool = Field(default=True, description="If true, display form as steps; if false, show all fields at once")
     webhooks: Optional[List[str]] = Field(default_factory=list, description="Webhook URLs to send form data to")
+    lead_field_mapping: Optional[Dict[str, str]] = Field(default_factory=dict, description="Maps lead static fields to form field names: {'name': 'first_name', 'email': 'contact_email', ...}")
 
 
 class FormCreate(FormBase):
@@ -103,6 +104,7 @@ class FormUpdate(BaseModel):
     is_active: Optional[bool] = None
     display_as_steps: Optional[bool] = None
     webhooks: Optional[List[str]] = None
+    lead_field_mapping: Optional[Dict[str, str]] = None
 
 
 class FormResponse(FormBase):
