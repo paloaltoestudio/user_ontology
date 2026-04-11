@@ -119,21 +119,53 @@ export function PublicFormPage() {
 
     try {
       setIsSubmitting(true)
-      // TODO: Implement form submission endpoint
-      console.log('Form submission:', {
-        formId: form.id,
-        data: formData,
-      })
 
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Transform formData from field IDs to field names
+      const transformedData: Record<string, any> = {}
+      for (const step of form.steps) {
+        for (const field of step.fields) {
+          if (formData[field.id] !== undefined && formData[field.id] !== '') {
+            transformedData[field.field_name] = formData[field.id]
+          }
+        }
+      }
+
+      // Extract email if present
+      const emailField = form.steps
+        .flatMap(s => s.fields)
+        .find(f => f.field_type === 'email' && formData[f.id])
+      const email = emailField ? formData[emailField.id] : undefined
+
+      // Submit to API
+      const response = await fetch(
+        `${window.location.origin}/api/v1/leads/submit/${form.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email,
+            form_data: transformedData,
+          }),
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`Submission failed with status ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log('Form submission successful:', result)
 
       setIsFormSubmitted(true)
       setFormData({})
       localStorage.removeItem(storageKey)
       setCurrentStepIndex(0)
+      showSuccess('Form submitted successfully!')
     } catch (err) {
-      showError('Failed to submit form')
+      console.error('Form submission error:', err)
+      showError(err instanceof Error ? err.message : 'Failed to submit form')
     } finally {
       setIsSubmitting(false)
     }

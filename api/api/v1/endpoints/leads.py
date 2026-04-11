@@ -84,7 +84,6 @@ async def submit_form(
     await db.flush()  # Get the lead ID without committing
     lead_id = lead.id
     await db.commit()
-    await db.refresh(lead)
 
     # Send webhooks in background (non-blocking)
     if form.webhooks:
@@ -96,7 +95,11 @@ async def submit_form(
             webhook_urls=form.webhooks
         )
 
-    return lead
+    # Refresh to get latest data and eager load relationships
+    result = await db.execute(
+        select(Lead).options(selectinload(Lead.webhook_deliveries)).where(Lead.id == lead_id)
+    )
+    return result.scalars().unique().first()
 
 
 @router.get("", response_model=list[LeadResponse])
