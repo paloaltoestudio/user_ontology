@@ -21,6 +21,7 @@ class Form(Base):
 
     # Relationships
     steps = relationship("FormStep", back_populates="form", cascade="all, delete-orphan")
+    actions = relationship("Action", secondary="form_actions", back_populates="forms")
 
     def __repr__(self) -> str:
         return f"<Form(id={self.id}, name={self.name}, is_active={self.is_active})>"

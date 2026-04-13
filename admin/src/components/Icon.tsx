@@ -1,5 +1,5 @@
 interface IconProps {
-  type: 'file' | 'checkbox' | 'form' | 'copy' | 'users' | 'check-circle' | 'clock' | 'slash' | 'trending-down' | 'search' | 'target' | 'info' | 'activity' | 'log-in' | 'file-text' | 'user' | 'zap' | 'circle' | 'lightbulb' | 'user-plus' | 'x-circle' | 'minus-circle'
+  type: 'file' | 'checkbox' | 'form' | 'copy' | 'users' | 'check-circle' | 'clock' | 'slash' | 'trending-down' | 'search' | 'target' | 'info' | 'activity' | 'log-in' | 'file-text' | 'user' | 'zap' | 'circle' | 'lightbulb' | 'user-plus' | 'x-circle' | 'minus-circle' | 'filter' | 'chevron-up' | 'chevron-down' | 'x'
   size?: number
   color?: string
   className?: string
@@ -148,6 +148,27 @@ export function Icon({ type, size = 1, color = 'currentColor', className = '' }:
       <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
         <circle cx="12" cy="12" r="10" />
         <line x1="8" y1="12" x2="16" y2="12" />
+      </svg>
+    ),
+    filter: (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+      </svg>
+    ),
+    'chevron-up': (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <polyline points="18 15 12 9 6 15" />
+      </svg>
+    ),
+    'chevron-down': (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    ),
+    x: (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
       </svg>
     ),
   }

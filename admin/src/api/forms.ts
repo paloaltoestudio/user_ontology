@@ -78,4 +78,22 @@ export const formsApi = {
       `/api/v1/forms/${formId}/steps/${stepId}/fields/${fieldId}`
     )
   },
+
+  getFormActions: async (formId: number): Promise<any[]> => {
+    const response = await apiClient.get(`/api/v1/actions/forms/${formId}/actions`)
+    return response.data
+  },
+
+  addActionToForm: async (formId: number, actionId: number): Promise<any> => {
+    const response = await apiClient.post(
+      `/api/v1/actions/forms/${formId}/actions/${actionId}`
+    )
+    return response.data
+  },
+
+  removeActionFromForm: async (formId: number, actionId: number): Promise<void> => {
+    await apiClient.delete(
+      `/api/v1/actions/forms/${formId}/actions/${actionId}`
+    )
+  },
 }

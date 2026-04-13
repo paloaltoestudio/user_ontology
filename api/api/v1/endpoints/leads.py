@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Background
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
-from typing import Optional
+from typing import Optional, List
 import httpx
 import logging
 
@@ -11,7 +11,10 @@ from core.security import get_current_admin
 from models.user import User
 from models.form import Form
 from models.lead import Lead, WebhookDelivery
+from models.action import Action
 from schemas.lead import LeadCreate, LeadResponse, LeadUpdate
+from schemas.action import BulkApplyActionRequest
+from services.action_service import trigger_form_actions, trigger_action
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,20 @@ async def send_webhooks(lead_id: int, form_id: int, form_data: dict, webhook_url
                 logger.error(f"Webhook delivery failed for lead {lead_id} to {webhook_url}: {str(e)}")
 
         await db.commit()
+
+
+async def trigger_actions_for_form(lead_id: int, form_id: int, form_data: dict):
+    """Trigger all actions attached to a form when lead submits it"""
+    async with AsyncSessionLocal() as db:
+        try:
+            await trigger_form_actions(
+                form_id=form_id,
+                user_id=lead_id,
+                form_data=form_data,
+                db=db,
+            )
+        except Exception as e:
+            logger.error(f"Failed to trigger form actions for lead {lead_id}: {str(e)}")
 
 
 @router.post("/submit/{form_id}", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
@@ -94,6 +111,14 @@ async def submit_form(
             form_data=lead_data.form_data,
             webhook_urls=form.webhooks
         )
+
+    # Trigger form actions in background (non-blocking)
+    background_tasks.add_task(
+        trigger_actions_for_form,
+        lead_id=lead_id,
+        form_id=form_id,
+        form_data=lead_data.form_data,
+    )
 
     # Refresh to get latest data and eager load relationships
     result = await db.execute(
@@ -201,3 +226,69 @@ async def delete_lead(
 
     await db.delete(lead)
     await db.commit()
+
+
+@router.post("/actions/apply", status_code=status.HTTP_200_OK)
+async def apply_action_to_leads(
+    request: BulkApplyActionRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(get_current_admin),
+):
+    """Apply an action to multiple leads (admin only)"""
+    # Verify action exists
+    action_result = await db.execute(
+        select(Action).where(Action.id == request.action_id)
+    )
+    action = action_result.scalars().first()
+
+    if not action:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Action not found",
+        )
+
+    # Verify all leads exist
+    leads_result = await db.execute(
+        select(Lead).where(Lead.id.in_(request.lead_ids))
+    )
+    leads = leads_result.scalars().all()
+
+    if not leads:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No leads found with provided IDs",
+        )
+
+    # Trigger action for each lead
+    applied_count = 0
+    for lead in leads:
+        try:
+            payload = {
+                "id": lead.id,
+                "form_id": lead.form_id,
+                "name": lead.name,
+                "last_name": lead.last_name,
+                "email": lead.email,
+                "phone": lead.phone,
+                "company": lead.company,
+                "company_url": lead.company_url,
+                "status": lead.status,
+                "form_data": lead.form_data,
+                "notes": lead.notes,
+                "created_at": lead.created_at.isoformat(),
+                "updated_at": lead.updated_at.isoformat(),
+            }
+            await trigger_action(
+                action_id=request.action_id,
+                user_id=lead.id,
+                payload=payload,
+                db=db,
+            )
+            applied_count += 1
+        except Exception as e:
+            logger.error(f"Failed to apply action {request.action_id} to lead {lead.id}: {str(e)}")
+
+    return {
+        "message": f"Action applied to {applied_count} lead(s)",
+        "applied_count": applied_count,
+    }

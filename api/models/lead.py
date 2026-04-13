@@ -28,6 +28,7 @@ class Lead(Base):
     # Relationships
     form = relationship("Form")
     webhook_deliveries = relationship("WebhookDelivery", back_populates="lead", cascade="all, delete-orphan")
+    actions = relationship("Action", secondary="user_actions", back_populates="users")
 
     def __repr__(self) -> str:
         return f"<Lead(id={self.id}, form_id={self.form_id}, email={self.email}, status={self.status})>"

@@ -9,9 +9,10 @@ import { Icon } from '../components/Icon'
 import { WebhookManager } from '../components/Forms/WebhookManager'
 import { EmbedModal } from '../components/Forms/EmbedModal'
 import { LeadFieldMappingUI } from '../components/Forms/LeadFieldMappingUI'
+import { FormActionsManager } from '../components/Forms/FormActionsManager'
 import { useToast } from '../hooks/useToast'
 
-type TabType = 'general' | 'webhooks' | 'mapping' | 'steps'
+type TabType = 'general' | 'webhooks' | 'mapping' | 'steps' | 'actions'
 
 export function FormDetailPage() {
   const { formId } = useParams()
@@ -187,6 +188,7 @@ export function FormDetailPage() {
 
   const tabs: Array<{ id: TabType; label: string }> = [
     { id: 'general', label: 'General' },
+    { id: 'actions', label: 'Actions' },
     { id: 'webhooks', label: 'Webhooks' },
     { id: 'steps', label: 'Steps' },
     { id: 'mapping', label: 'Lead Mapping' },
@@ -472,6 +474,17 @@ export function FormDetailPage() {
                       {updateFormMutation.isPending ? 'Saving...' : 'Save Mapping'}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Actions Tab */}
+              {activeTab === 'actions' && (
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-8">
+                  <h2 className="text-xl font-semibold text-white mb-6">Form Actions</h2>
+                  <p className="text-slate-400 text-sm mb-6">
+                    Attach actions to this form to automatically trigger external workflows when the form is submitted. Actions send webhook requests to your configured endpoints.
+                  </p>
+                  <FormActionsManager formId={displayForm.id} />
                 </div>
               )}
             </div>

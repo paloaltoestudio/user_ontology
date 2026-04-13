@@ -43,4 +43,11 @@ export const leadsApi = {
   deleteLead: async (leadId: number): Promise<void> => {
     await apiClient.delete(`/api/v1/leads/${leadId}`)
   },
+
+  applyActionToLeads: async (leadIds: number[], actionId: number): Promise<void> => {
+    await apiClient.post(`/api/v1/leads/actions/apply`, {
+      lead_ids: leadIds,
+      action_id: actionId,
+    })
+  },
 }

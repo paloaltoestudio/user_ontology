@@ -40,6 +40,7 @@ export interface Form {
   webhooks?: string[]
   display_as_steps: boolean
   lead_field_mapping?: LeadFieldMapping
+  actions?: Array<{ id: number; name: string; description?: string; webhook_url: string }>
   steps: FormStep[]
   created_at: string
   updated_at: string

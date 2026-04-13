@@ -66,6 +66,16 @@ export function Sidebar() {
         >
           Forms
         </Link>
+        <Link
+          to="/actions"
+          className={`block px-4 py-3 rounded-lg font-medium transition ${
+            isActive('/actions')
+              ? 'bg-gradient-to-r from-[#0582BE] to-blue-600 text-white'
+              : 'text-slate-300 hover:bg-slate-800'
+          }`}
+        >
+          Actions
+        </Link>
       </nav>
 
       <div className="p-4 border-t border-slate-800">
