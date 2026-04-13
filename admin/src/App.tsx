@@ -7,6 +7,7 @@ import { FormsPage } from './pages/FormsPage'
 import { FormDetailPage } from './pages/FormDetailPage'
 import { PublicFormPage } from './pages/PublicFormPage'
 import { ActionsPage } from './pages/ActionsPage'
+import { GoalsPage } from './pages/GoalsPage'
 import { UserOntologySummaryPage } from './pages/UserOntologySummaryPage'
 import { UserDetailPageTabbed } from './pages/UserDetailPageTabbed'
 import { UserSuggestionsInboxPage } from './pages/UserSuggestionsInboxPage'
@@ -61,6 +62,14 @@ function App() {
           element={
             <ProtectedRoute>
               <ActionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/goals"
+          element={
+            <ProtectedRoute>
+              <GoalsPage />
             </ProtectedRoute>
           }
         />

@@ -143,6 +143,7 @@ async def deactivate_goal(
     goal.is_active = False
     await db.commit()
     logger.info(f"Goal deactivated: id={goal.id}, deactivated_by={admin_user.id}")
+    return None
 
 
 # ============================================================================
