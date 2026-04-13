@@ -33,6 +33,18 @@ export const actionsApi = {
     await apiClient.delete(`/api/v1/actions/${actionId}`)
   },
 
+  // Trigger action on leads
+  triggerAction: async (actionId: number, leadIds: number[]): Promise<any> => {
+    const response = await apiClient.post(
+      `/api/v1/leads/actions/apply`,
+      {
+        action_id: actionId,
+        lead_ids: leadIds,
+      }
+    )
+    return response.data
+  },
+
   // Logging
   getActionLogs: async (actionId: number, filters?: {
     user_id?: number

@@ -1,18 +1,57 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Sidebar } from '../components/Sidebar'
 import { Icon } from '../components/Icon'
 import { mockUsers } from '../data/mockUsers'
 import { UserStatus, GoalStatus, SuggestionPriority, SuggestionType } from '../types/user'
+import { Action } from '../types/action'
+import { actionsApi } from '../api/actions'
 
 export function UserOntologyDetailPage() {
   const { userId } = useParams()
   const navigate = useNavigate()
   const [suggestionTab, setSuggestionTab] = useState<'pending' | 'applied'>('pending')
+  const [actions, setActions] = useState<Action[]>([])
+  const [selectedActionId, setSelectedActionId] = useState<number | null>(null)
+  const [loadingActions, setLoadingActions] = useState(false)
+  const [applyingAction, setApplyingAction] = useState(false)
 
   const user = useMemo(() => {
     return mockUsers.find((u) => u.id === Number(userId))
   }, [userId])
+
+  // Load available actions
+  useEffect(() => {
+    const loadActions = async () => {
+      try {
+        setLoadingActions(true)
+        const fetchedActions = await actionsApi.listActions()
+        setActions(fetchedActions)
+      } catch (error) {
+        console.error('Failed to load actions:', error)
+      } finally {
+        setLoadingActions(false)
+      }
+    }
+    loadActions()
+  }, [])
+
+  const handleApplyAction = async () => {
+    if (!selectedActionId || !user) return
+
+    try {
+      setApplyingAction(true)
+      await actionsApi.triggerAction(selectedActionId, [user.id])
+      // Reset after successful application
+      setSelectedActionId(null)
+      // You could show a success message here
+    } catch (error) {
+      console.error('Failed to apply action:', error)
+      // You could show an error message here
+    } finally {
+      setApplyingAction(false)
+    }
+  }
 
   if (!user) {
     return (
@@ -360,17 +399,32 @@ export function UserOntologyDetailPage() {
                   </div>
                 )}
 
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                  <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition">
-                    Send Email
-                  </button>
-                  <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition">
-                    Export Data
-                  </button>
-                  <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition">
-                    Manage Access
-                  </button>
+                {/* Action Dropdown Section */}
+                <div className="flex gap-3 items-center">
+                  <select
+                    value={selectedActionId || ''}
+                    onChange={(e) => setSelectedActionId(e.target.value ? Number(e.target.value) : null)}
+                    disabled={loadingActions}
+                    className="w-80 px-4 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-50"
+                  >
+                    <option value="">
+                      {loadingActions ? 'Loading actions...' : 'Select an action...'}
+                    </option>
+                    {actions.map((action) => (
+                      <option key={action.id} value={action.id}>
+                        {action.name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedActionId && (
+                    <button
+                      onClick={handleApplyAction}
+                      disabled={applyingAction}
+                      className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition"
+                    >
+                      {applyingAction ? 'Applying...' : 'Apply Action'}
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Sidebar } from '../components/Sidebar'
@@ -17,7 +17,9 @@ import { mockUsers } from '../data/mockUsers'
 import { useToast } from '../hooks/useToast'
 import { leadsApi } from '../api/leads'
 import { formsApi } from '../api/forms'
+import { actionsApi } from '../api/actions'
 import { GoalStatus, SuggestionPriority, SuggestionType } from '../types/user'
+import { Action } from '../types/action'
 
 type LeadStatus = 'new' | 'contacted' | 'qualified' | 'activated' | 'inactive' | 'churned'
 
@@ -55,6 +57,10 @@ export function UserDetailPageTabbed() {
   const [activeTab, setActiveTab] = useState<TabType>('journey')
   const [suggestionTab, setSuggestionTab] = useState<'pending' | 'applied'>('pending')
   const [isDeleting, setIsDeleting] = useState(false)
+  const [actions, setActions] = useState<Action[]>([])
+  const [selectedActionId, setSelectedActionId] = useState<number | null>(null)
+  const [loadingActions, setLoadingActions] = useState(false)
+  const [applyingAction, setApplyingAction] = useState(false)
 
   const [nodes, , onNodesChange] = useNodesState(userJourneyFlow.nodes)
   const [edges, , onEdgesChange] = useEdgesState(userJourneyFlow.edges)
@@ -74,6 +80,39 @@ export function UserDetailPageTabbed() {
 
   if (error) {
     showError('Failed to load lead details')
+  }
+
+  // Load available actions
+  useEffect(() => {
+    const loadActions = async () => {
+      try {
+        setLoadingActions(true)
+        const fetchedActions = await actionsApi.listActions()
+        setActions(fetchedActions)
+      } catch (error) {
+        console.error('Failed to load actions:', error)
+      } finally {
+        setLoadingActions(false)
+      }
+    }
+    loadActions()
+  }, [])
+
+  const handleApplyAction = async () => {
+    if (!selectedActionId || !user) return
+
+    try {
+      setApplyingAction(true)
+      await actionsApi.triggerAction(selectedActionId, [user.id])
+      // Reset after successful application
+      setSelectedActionId(null)
+      showSuccess('Action applied successfully')
+    } catch (error) {
+      console.error('Failed to apply action:', error)
+      showError('Failed to apply action')
+    } finally {
+      setApplyingAction(false)
+    }
   }
 
   // Helper functions from UserOntologyDetailPage
@@ -422,17 +461,32 @@ export function UserDetailPageTabbed() {
                       </div>
                     )}
 
-{/* Action Buttons */}
-                    <div className="flex gap-3">
-                      <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition">
-                        Send Email
-                      </button>
-                      <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition">
-                        Export Data
-                      </button>
-                      <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition">
-                        Manage Access
-                      </button>
+{/* Action Dropdown Section */}
+                    <div className="flex gap-3 items-center">
+                      <select
+                        value={selectedActionId || ''}
+                        onChange={(e) => setSelectedActionId(e.target.value ? Number(e.target.value) : null)}
+                        disabled={loadingActions}
+                        className="w-80 px-4 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-50"
+                      >
+                        <option value="">
+                          {loadingActions ? 'Loading actions...' : 'Select an action...'}
+                        </option>
+                        {actions.map((action) => (
+                          <option key={action.id} value={action.id}>
+                            {action.name}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedActionId && (
+                        <button
+                          onClick={handleApplyAction}
+                          disabled={applyingAction}
+                          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition"
+                        >
+                          {applyingAction ? 'Applying...' : 'Apply Action'}
+                        </button>
+                      )}
                       <button
                         onClick={handleDeleteLead}
                         disabled={isDeleting}

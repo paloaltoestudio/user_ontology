@@ -4,9 +4,11 @@ from core.config import settings
 from core.database import engine
 
 # Import all models to register them
-from models import user, scoring_rule, event_log, form, lead, action
+from models import user, scoring_rule, event_log, form, lead, action, goal
 from models.lead import WebhookDelivery  # Explicitly import to register the model
 from models.action import ActionLog  # Explicitly import to register the model
+from models.goal import Goal, GoalCompletion, IdempotencyKey  # Explicitly import to register the models
+from models.api_key import ApiKey  # Explicitly import to register the model
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -41,7 +43,7 @@ async def root():
 
 
 # Import and include routers from endpoints
-from api.v1.endpoints import auth, users, flows, scoring, webhooks, forms, leads, actions
+from api.v1.endpoints import auth, users, flows, scoring, webhooks, forms, leads, actions, goals, settings
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
@@ -51,3 +53,5 @@ app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(forms.router, prefix="/api/v1")
 app.include_router(leads.router, prefix="/api/v1")
 app.include_router(actions.router, prefix="/api/v1")
+app.include_router(goals.router, prefix="/api/v1")
+app.include_router(settings.router, prefix="/api/v1")

@@ -195,22 +195,11 @@ export function UserFilters({
 
       {/* Advanced Filters Drawer */}
       {showDrawer && (
-        <div className="bg-slate-800/50 border border-slate-700/30 rounded-lg p-6 space-y-6 animate-in fade-in duration-200">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white uppercase tracking-wide">Filter by Attributes</h3>
-            <button
-              onClick={() => setShowDrawer(false)}
-              className="p-1 hover:bg-slate-700/50 rounded transition"
-            >
-              <Icon type="x" size={1} color="#94a3b8" />
-            </button>
-          </div>
+        <div className="bg-slate-800/50 border border-slate-700/30 rounded-lg animate-in fade-in duration-200 flex flex-col max-h-96 overflow-y-auto">
+          <div className="px-6 py-4 space-y-6">
 
-          <div className="h-px bg-slate-700/30" />
-
-          {/* Goal Filter */}
-          <div className="space-y-3">
+            {/* Goal Filter */}
+            <div className="space-y-3">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Goal (What they want to achieve)</label>
             <div className="flex gap-2 flex-wrap">
               {GOALS.map((goal) => (
@@ -360,51 +349,71 @@ export function UserFilters({
             </div>
           </div>
 
-          <div className="h-px bg-slate-700/30" />
+            <div className="h-px bg-slate-700/30" />
 
-          {/* Status Filter (Optional) */}
-          <div className="space-y-3">
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Status (Optional)</label>
-            <div className="relative">
-              <button
-                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-                className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-slate-300 hover:bg-slate-700 transition flex items-center justify-between text-sm"
-              >
-                <span>
-                  {filters.status
-                    ? STATUSES.find(s => s.value === filters.status)?.label
-                    : 'Select status...'}
-                </span>
-                <Icon
-                  type={showStatusDropdown ? 'chevron-up' : 'chevron-down'}
-                  size={0.875}
-                  color="currentColor"
-                />
-              </button>
+            {/* Status Filter (Optional) */}
+            <div className="space-y-3">
+              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Status (Optional)</label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-slate-300 hover:bg-slate-700 transition flex items-center justify-between text-sm"
+                >
+                  <span>
+                    {filters.status
+                      ? STATUSES.find(s => s.value === filters.status)?.label
+                      : 'Select status...'}
+                  </span>
+                  <Icon
+                    type={showStatusDropdown ? 'chevron-up' : 'chevron-down'}
+                    size={0.875}
+                    color="currentColor"
+                  />
+                </button>
 
-              {showStatusDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-10 max-h-48 overflow-y-auto">
-                  {STATUSES.map((status) => (
-                    <button
-                      key={status.value}
-                      onClick={() => {
-                        handleStatusChange(status.value)
-                        setShowStatusDropdown(false)
-                      }}
-                      className="w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 flex items-center gap-2.5 transition"
-                    >
-                      <input
-                        type="radio"
-                        checked={filters.status === status.value}
-                        onChange={() => {}}
-                        className="w-4 h-4 cursor-pointer"
-                      />
-                      <span>{status.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                {showStatusDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-10 max-h-48 overflow-y-auto">
+                    {STATUSES.map((status) => (
+                      <button
+                        key={status.value}
+                        onClick={() => {
+                          handleStatusChange(status.value)
+                          setShowStatusDropdown(false)
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 flex items-center gap-2.5 transition"
+                      >
+                        <input
+                          type="radio"
+                          checked={filters.status === status.value}
+                          onChange={() => {}}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                        <span>{status.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* Bottom Action Bar */}
+          <div className="sticky bottom-0 border-t border-slate-700/30 bg-slate-800/50 p-6 flex gap-3">
+            <button
+              onClick={() => setShowDrawer(false)}
+              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-[#0582BE] to-blue-600 hover:from-[#0582BE] hover:to-blue-700 text-white transition"
+            >
+              Done
+            </button>
+            <button
+              onClick={() => {
+                setFilters({})
+                onFilterChange?.({})
+              }}
+              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-slate-700/50 text-slate-300 hover:bg-slate-700 transition"
+            >
+              Clear
+            </button>
           </div>
         </div>
       )}
