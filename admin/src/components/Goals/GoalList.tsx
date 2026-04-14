@@ -6,6 +6,7 @@ import { EmptyState } from '../EmptyState'
 import { Icon } from '../Icon'
 import { useToastContext } from '../Toast/ToastContainer'
 import { ToggleSwitch } from '../ToggleSwitch'
+import { ConfirmActionModal } from '../DeleteGoalConfirmModal'
 
 interface GoalListProps {
   onSelectGoal: (goal: Goal) => void
@@ -21,11 +22,11 @@ export function GoalList({ onSelectGoal, onCreateNew, onDelete }: GoalListProps)
   })
 
   const [toggleConfirm, setToggleConfirm] = useState<{ goalId: number; action: 'activate' | 'deactivate' } | null>(null)
-  const [toggleError, setToggleError] = useState<string | null>(null)
+  const [isToggling, setIsToggling] = useState(false)
 
   const handleToggleStatus = async (goalId: number, newStatus: boolean) => {
     try {
-      setToggleError(null)
+      setIsToggling(true)
       await goalsApi.toggleGoalStatus(goalId, newStatus)
       setToggleConfirm(null)
       refetch()
@@ -34,8 +35,10 @@ export function GoalList({ onSelectGoal, onCreateNew, onDelete }: GoalListProps)
       onDelete(goalId)
     } catch (err: any) {
       const errorMsg = err.response?.data?.detail || err.message || 'Failed to update goal'
-      setToggleError(errorMsg)
+      addToast(errorMsg, 'error')
       console.error('Failed to update goal:', err)
+    } finally {
+      setIsToggling(false)
     }
   }
 
@@ -126,52 +129,22 @@ export function GoalList({ onSelectGoal, onCreateNew, onDelete }: GoalListProps)
                 </div>
               </div>
 
-              {toggleConfirm?.goalId === goal.id && (
-                <div className="mt-4 space-y-3">
-                  {toggleError && (
-                    <div className="p-3 bg-red-900/40 border border-red-700 rounded">
-                      <p className="text-sm text-red-300">{toggleError}</p>
-                    </div>
-                  )}
-                  <div className={`p-3 rounded flex justify-between items-center border ${
-                    toggleConfirm.action === 'deactivate'
-                      ? 'bg-red-900/20 border-red-700/50'
-                      : 'bg-green-900/20 border-green-700/50'
-                  }`}>
-                    <p className={`text-sm ${
-                      toggleConfirm.action === 'deactivate'
-                        ? 'text-red-300'
-                        : 'text-green-300'
-                    }`}>
-                      Are you sure you want to {toggleConfirm.action} this goal?
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleToggleStatus(goal.id, toggleConfirm.action === 'activate')}
-                        className={`px-3 py-1 text-sm text-white rounded transition ${
-                          toggleConfirm.action === 'deactivate'
-                            ? 'bg-red-600 hover:bg-red-700'
-                            : 'bg-green-600 hover:bg-green-700'
-                        }`}
-                      >
-                        {toggleConfirm.action === 'deactivate' ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setToggleConfirm(null)
-                          setToggleError(null)
-                        }}
-                        className="px-3 py-1 text-sm bg-slate-700 hover:bg-slate-600 text-white rounded transition"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>
+      )}
+
+      {/* Toggle Status Confirmation Modal */}
+      {toggleConfirm && (
+        <ConfirmActionModal
+          title={`${toggleConfirm.action === 'activate' ? 'Activate' : 'Deactivate'} goal?`}
+          message={`Are you sure you want to ${toggleConfirm.action} this goal?`}
+          confirmText={toggleConfirm.action === 'activate' ? 'Activate' : 'Deactivate'}
+          onConfirm={() => handleToggleStatus(toggleConfirm.goalId, toggleConfirm.action === 'activate')}
+          onCancel={() => setToggleConfirm(null)}
+          isLoading={isToggling}
+          variant={toggleConfirm.action === 'deactivate' ? 'danger' : 'default'}
+        />
       )}
     </div>
   )

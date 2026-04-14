@@ -65,3 +65,4 @@ versions/
 .playwright-mcp/
 playwright-report/
 test-results/
+*.png

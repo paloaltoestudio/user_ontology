@@ -5,7 +5,9 @@ import { Icon } from '../components/Icon'
 import { mockUsers } from '../data/mockUsers'
 import { UserStatus, GoalStatus, SuggestionPriority, SuggestionType } from '../types/user'
 import { Action } from '../types/action'
+import { Goal } from '../types/goal'
 import { actionsApi } from '../api/actions'
+import { goalsApi } from '../api/goals'
 
 export function UserOntologyDetailPage() {
   const { userId } = useParams()
@@ -15,6 +17,10 @@ export function UserOntologyDetailPage() {
   const [selectedActionId, setSelectedActionId] = useState<number | null>(null)
   const [loadingActions, setLoadingActions] = useState(false)
   const [applyingAction, setApplyingAction] = useState(false)
+  const [goals, setGoals] = useState<Goal[]>([])
+  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null)
+  const [loadingGoals, setLoadingGoals] = useState(false)
+  const [assigningGoal, setAssigningGoal] = useState(false)
 
   const user = useMemo(() => {
     return mockUsers.find((u) => u.id === Number(userId))
@@ -36,6 +42,22 @@ export function UserOntologyDetailPage() {
     loadActions()
   }, [])
 
+  // Load available goals
+  useEffect(() => {
+    const loadGoals = async () => {
+      try {
+        setLoadingGoals(true)
+        const fetchedGoals = await goalsApi.listGoals()
+        setGoals(fetchedGoals)
+      } catch (error) {
+        console.error('Failed to load goals:', error)
+      } finally {
+        setLoadingGoals(false)
+      }
+    }
+    loadGoals()
+  }, [])
+
   const handleApplyAction = async () => {
     if (!selectedActionId || !user) return
 
@@ -50,6 +72,23 @@ export function UserOntologyDetailPage() {
       // You could show an error message here
     } finally {
       setApplyingAction(false)
+    }
+  }
+
+  const handleAssignGoal = async () => {
+    if (!selectedGoalId || !user) return
+
+    try {
+      setAssigningGoal(true)
+      await goalsApi.assignGoalToUser(user.id, selectedGoalId)
+      // Reset after successful assignment
+      setSelectedGoalId(null)
+      // You could show a success message here
+    } catch (error) {
+      console.error('Failed to assign goal:', error)
+      // You could show an error message here
+    } finally {
+      setAssigningGoal(false)
     }
   }
 
@@ -434,6 +473,34 @@ export function UserOntologyDetailPage() {
                       <Icon type="target" size={1.25} color="#0582BE" />
                       Goals & Milestones
                     </h2>
+
+                    {/* Goal Assignment Dropdown */}
+                    <div className="mb-6 flex gap-3 items-center">
+                      <select
+                        value={selectedGoalId || ''}
+                        onChange={(e) => setSelectedGoalId(e.target.value ? Number(e.target.value) : null)}
+                        disabled={loadingGoals}
+                        className="flex-1 px-4 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-50"
+                      >
+                        <option value="">
+                          {loadingGoals ? 'Loading goals...' : 'Select a goal to assign...'}
+                        </option>
+                        {goals.map((goal) => (
+                          <option key={goal.id} value={goal.id}>
+                            {goal.name}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedGoalId && (
+                        <button
+                          onClick={handleAssignGoal}
+                          disabled={assigningGoal}
+                          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition"
+                        >
+                          {assigningGoal ? 'Assigning...' : 'Assign Goal'}
+                        </button>
+                      )}
+                    </div>
 
                     <div className="space-y-4">
                       {user.goals.map((goal) => (

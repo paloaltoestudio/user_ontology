@@ -4,6 +4,8 @@ import { actionsApi } from '../../api/actions'
 import { Action } from '../../types/action'
 import { EmptyState } from '../EmptyState'
 import { Icon } from '../Icon'
+import { ConfirmActionModal } from '../DeleteGoalConfirmModal'
+import { useToastContext } from '../Toast/ToastContainer'
 
 interface ActionListProps {
   onSelectAction: (action: Action) => void
@@ -12,21 +14,28 @@ interface ActionListProps {
 }
 
 export function ActionList({ onSelectAction, onCreateNew, onDelete }: ActionListProps) {
+  const { addToast } = useToastContext()
   const { data: actions = [], isLoading, error, refetch } = useQuery({
     queryKey: ['actions'],
     queryFn: actionsApi.listActions,
   })
 
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async (actionId: number) => {
     try {
+      setIsDeleting(true)
       await actionsApi.deleteAction(actionId)
       setDeleteConfirm(null)
       refetch()
       onDelete(actionId)
+      addToast('Action deleted successfully', 'success')
     } catch (err) {
       console.error('Failed to delete action:', err)
+      addToast('Failed to delete action', 'error')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -111,28 +120,22 @@ export function ActionList({ onSelectAction, onCreateNew, onDelete }: ActionList
                 </div>
               </div>
 
-              {deleteConfirm === action.id && (
-                <div className="mt-4 p-3 bg-red-900/20 border border-red-700/50 rounded flex justify-between items-center">
-                  <p className="text-sm text-red-300">Are you sure you want to delete this action?</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleDelete(action.id)}
-                      className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition"
-                    >
-                      Delete
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirm(null)}
-                      className="px-3 py-1 text-sm bg-slate-700 hover:bg-slate-600 text-white rounded transition"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <ConfirmActionModal
+          title="Delete action?"
+          message={`Are you sure you want to delete this action? This cannot be undone.`}
+          confirmText="Delete"
+          onConfirm={() => handleDelete(deleteConfirm)}
+          onCancel={() => setDeleteConfirm(null)}
+          isLoading={isDeleting}
+          variant="danger"
+        />
       )}
     </div>
   )

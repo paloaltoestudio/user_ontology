@@ -7,7 +7,7 @@ from core.database import engine
 from models import user, scoring_rule, event_log, form, lead, action, goal
 from models.lead import WebhookDelivery  # Explicitly import to register the model
 from models.action import ActionLog  # Explicitly import to register the model
-from models.goal import Goal, GoalCompletion, IdempotencyKey  # Explicitly import to register the models
+from models.goal import Goal, GoalCompletion, GoalAssignment, IdempotencyKey  # Explicitly import to register the models
 from models.api_key import ApiKey  # Explicitly import to register the model
 
 app = FastAPI(

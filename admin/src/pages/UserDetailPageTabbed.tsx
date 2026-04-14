@@ -18,8 +18,11 @@ import { useToast } from '../hooks/useToast'
 import { leadsApi } from '../api/leads'
 import { formsApi } from '../api/forms'
 import { actionsApi } from '../api/actions'
+import { goalsApi } from '../api/goals'
 import { GoalStatus, SuggestionPriority, SuggestionType } from '../types/user'
 import { Action } from '../types/action'
+import { Goal } from '../types/goal'
+import { ConfirmActionModal } from '../components/DeleteGoalConfirmModal'
 
 type LeadStatus = 'new' | 'contacted' | 'qualified' | 'activated' | 'inactive' | 'churned'
 
@@ -61,6 +64,15 @@ export function UserDetailPageTabbed() {
   const [selectedActionId, setSelectedActionId] = useState<number | null>(null)
   const [loadingActions, setLoadingActions] = useState(false)
   const [applyingAction, setApplyingAction] = useState(false)
+  const [goals, setGoals] = useState<Goal[]>([])
+  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null)
+  const [loadingGoals, setLoadingGoals] = useState(false)
+  const [assigningGoal, setAssigningGoal] = useState(false)
+  const [assignedGoals, setAssignedGoals] = useState<any[]>([])
+  const [loadingAssignedGoals, setLoadingAssignedGoals] = useState(false)
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
+  const [deleteGoalData, setDeleteGoalData] = useState<{ goalId: number; assignmentId: number; goalName: string } | null>(null)
+  const [isRemovingGoal, setIsRemovingGoal] = useState(false)
 
   const [nodes, , onNodesChange] = useNodesState(userJourneyFlow.nodes)
   const [edges, , onEdgesChange] = useEdgesState(userJourneyFlow.edges)
@@ -98,6 +110,40 @@ export function UserDetailPageTabbed() {
     loadActions()
   }, [])
 
+  // Load available goals
+  useEffect(() => {
+    const loadGoals = async () => {
+      try {
+        setLoadingGoals(true)
+        const fetchedGoals = await goalsApi.listGoals()
+        setGoals(fetchedGoals)
+      } catch (error) {
+        console.error('Failed to load goals:', error)
+      } finally {
+        setLoadingGoals(false)
+      }
+    }
+    loadGoals()
+  }, [])
+
+  // Load goals assigned to the user
+  useEffect(() => {
+    if (!user) return
+
+    const loadUserGoals = async () => {
+      try {
+        setLoadingAssignedGoals(true)
+        const fetchedAssignments = await goalsApi.getUserGoalAssignments(user.id)
+        setAssignedGoals(fetchedAssignments)
+      } catch (error) {
+        console.error('Failed to load assigned goals:', error)
+      } finally {
+        setLoadingAssignedGoals(false)
+      }
+    }
+    loadUserGoals()
+  }, [user?.id])
+
   const handleApplyAction = async () => {
     if (!selectedActionId || !user) return
 
@@ -112,6 +158,59 @@ export function UserDetailPageTabbed() {
       showError('Failed to apply action')
     } finally {
       setApplyingAction(false)
+    }
+  }
+
+  const handleAssignGoal = async () => {
+    if (!selectedGoalId || !user) return
+
+    try {
+      setAssigningGoal(true)
+      await goalsApi.assignGoalToUser(selectedGoalId, user.id)
+      // Reset after successful assignment
+      setSelectedGoalId(null)
+      // Reload assigned goals
+      const updatedAssignments = await goalsApi.getUserGoalAssignments(user.id)
+      setAssignedGoals(updatedAssignments)
+      showSuccess('Goal assigned successfully')
+    } catch (error) {
+      console.error('Failed to assign goal:', error)
+      showError('Failed to assign goal')
+    } finally {
+      setAssigningGoal(false)
+    }
+  }
+
+  const handleRemoveGoalAssignment = (goalId: number, assignmentId: number, goalName: string) => {
+    setDeleteGoalData({ goalId, assignmentId, goalName })
+    setShowDeleteConfirmModal(true)
+  }
+
+  const handleConfirmRemoveGoal = async () => {
+    if (!user || !deleteGoalData) return
+
+    try {
+      setIsRemovingGoal(true)
+      await goalsApi.removeAssignment(deleteGoalData.goalId, deleteGoalData.assignmentId)
+
+      // Optimistically remove from UI
+      setAssignedGoals(prev => prev.filter(a => a.id !== deleteGoalData.assignmentId))
+      showSuccess('Goal assignment removed successfully')
+
+      // Try to reload in background
+      try {
+        const updatedAssignments = await goalsApi.getUserGoalAssignments(user.id)
+        setAssignedGoals(updatedAssignments)
+      } catch (reloadError) {
+        console.warn('Failed to reload assignments, using optimistic update:', reloadError)
+      }
+    } catch (error) {
+      console.error('Failed to remove goal assignment:', error)
+      showError('Failed to remove goal assignment')
+    } finally {
+      setIsRemovingGoal(false)
+      setShowDeleteConfirmModal(false)
+      setDeleteGoalData(null)
     }
   }
 
@@ -497,40 +596,96 @@ export function UserDetailPageTabbed() {
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      {/* Goals Section - Uses mock data for now */}
-                      {mockUser?.goals && (
-                        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
-                          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                            <Icon type="target" size={1.25} color="#0582BE" />
-                            Goals & Milestones
-                          </h2>
+                      {/* Goals Section - Shows assigned goals */}
+                      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
+                        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                          <Icon type="target" size={1.25} color="#0582BE" />
+                          Goals & Milestones
+                        </h2>
 
-                          <div className="space-y-4">
-                            {mockUser.goals.map((goal) => (
-                              <div
-                                key={goal.id}
-                                className={`p-4 rounded-lg border border-slate-700/30 ${getGoalStatusColor(goal.status).bg}`}
-                              >
-                                <div className="flex items-start justify-between mb-2">
-                                  <div>
-                                    <p className="font-semibold text-white">{goal.title}</p>
-                                    <p className="text-sm text-slate-400 mt-1">{goal.description}</p>
-                                  </div>
-                                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${getGoalStatusColor(goal.status).bg} ${getGoalStatusColor(goal.status).text} whitespace-nowrap`}>
-                                    {goalStatusLabel[goal.status]}
-                                  </span>
-                                </div>
-                                {goal.dueDate && (
-                                  <p className="text-xs text-slate-400 mt-3">Due: {formatDate(goal.dueDate)}</p>
-                                )}
-                                {goal.completedDate && (
-                                  <p className="text-xs text-emerald-400 mt-3">Completed: {formatDate(goal.completedDate)}</p>
-                                )}
-                              </div>
+                        {/* Goal Assignment */}
+                        <div className="mb-6 pb-6 border-b border-slate-700/30 flex gap-3 items-center">
+                          <select
+                            value={selectedGoalId || ''}
+                            onChange={(e) => setSelectedGoalId(e.target.value ? Number(e.target.value) : null)}
+                            disabled={loadingGoals}
+                            className="flex-1 px-4 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-50"
+                          >
+                            <option value="">
+                              {loadingGoals ? 'Loading goals...' : 'Select a goal to assign...'}
+                            </option>
+                            {goals.filter((goal) => {
+                              const isActive = goal.is_active
+                              const isAlreadyAssigned = assignedGoals.some((assignment) => assignment.goal_id === goal.id)
+                              return isActive && !isAlreadyAssigned
+                            }).map((goal) => (
+                              <option key={goal.id} value={goal.id}>
+                                {goal.name}
+                              </option>
                             ))}
-                          </div>
+                          </select>
+                          {selectedGoalId && (
+                            <button
+                              onClick={handleAssignGoal}
+                              disabled={assigningGoal}
+                              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition whitespace-nowrap"
+                            >
+                              {assigningGoal ? 'Assigning...' : 'Assign Goal'}
+                            </button>
+                          )}
                         </div>
-                      )}
+
+                        <div className="space-y-4">
+                          {loadingAssignedGoals ? (
+                            <div className="text-center py-6">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
+                            </div>
+                          ) : assignedGoals.length === 0 ? (
+                            <p className="text-slate-400 text-center py-6">No goals assigned yet</p>
+                          ) : (
+                            assignedGoals.map((assignment) => {
+                              const goal = assignment.goal || assignment
+                              console.log('Goal title:', goal.name, 'Full goal object:', goal)
+                              // Determine goal status based on completion or active status
+                              const goalStatus = goal.completion_status || (goal.is_active ? 'in_progress' : 'not_started')
+                              const statusColor = getGoalStatusColor(goalStatus as GoalStatus)
+
+                              return (
+                                <div
+                                  key={assignment.id}
+                                  className={`p-4 rounded-lg border border-slate-700/30 ${statusColor.bg} relative`}
+                                >
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div>
+                                      <p className="font-semibold text-white">{goal.name}</p>
+                                      <p className="text-sm text-slate-400 mt-1">{goal.description}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusColor.bg} ${statusColor.text} whitespace-nowrap`}>
+                                        {goalStatusLabel[goalStatus as GoalStatus]}
+                                      </span>
+                                      <button
+                                        onClick={() => handleRemoveGoalAssignment(goal.id, assignment.id, goal.name)}
+                                        className="p-1.5 rounded-md hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors"
+                                        title="Remove goal assignment"
+                                        disabled={isRemovingGoal}
+                                      >
+                                        <Icon type="trash-2" size={1} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {assignment.assigned_at && (
+                                    <p className="text-xs text-slate-400 mt-3">Assigned: {formatDate(assignment.assigned_at)}</p>
+                                  )}
+                                  {assignment.due_date && (
+                                    <p className="text-xs text-slate-400 mt-1">Due: {formatDate(assignment.due_date)}</p>
+                                  )}
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
 
                       {/* User Information Section - Shows Unmapped Form Data Only */}
                       <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/30 rounded-xl p-6 backdrop-blur-sm">
@@ -708,6 +863,28 @@ export function UserDetailPageTabbed() {
           </div>
         </main>
       </div>
+
+      {/* Delete Goal Confirmation Modal */}
+      {showDeleteConfirmModal && deleteGoalData && (
+        <ConfirmActionModal
+          title="Remove goal?"
+          message={
+            <p>
+              <span className="text-slate-300">Remove </span>
+              <span className="font-semibold">"{deleteGoalData.goalName}"</span>
+              <span className="text-slate-300"> from this user?</span>
+            </p>
+          }
+          confirmText="Remove"
+          onConfirm={handleConfirmRemoveGoal}
+          onCancel={() => {
+            setShowDeleteConfirmModal(false)
+            setDeleteGoalData(null)
+          }}
+          isLoading={isRemovingGoal}
+          variant="danger"
+        />
+      )}
     </div>
   )
 }

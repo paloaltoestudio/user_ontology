@@ -40,4 +40,28 @@ export const goalsApi = {
     )
     return response.data
   },
+
+  assignGoalToUser: async (goalId: number, userId: number): Promise<any> => {
+    const response = await apiClient.post(`/api/v1/goals/${goalId}/assign`, { user_id: userId })
+    return response.data
+  },
+
+  assignGoalToMultipleUsers: async (goalId: number, userIds: number[]): Promise<any> => {
+    const response = await apiClient.post(`/api/v1/goals/${goalId}/assign-bulk`, { user_ids: userIds })
+    return response.data
+  },
+
+  getGoalAssignments: async (goalId: number): Promise<any[]> => {
+    const response = await apiClient.get(`/api/v1/goals/${goalId}/assignments`)
+    return response.data
+  },
+
+  getUserGoalAssignments: async (userId: number): Promise<any[]> => {
+    const response = await apiClient.get(`/api/v1/goals/user/${userId}/assignments`)
+    return response.data
+  },
+
+  removeAssignment: async (goalId: number, assignmentId: number): Promise<void> => {
+    await apiClient.delete(`/api/v1/goals/${goalId}/assignments/${assignmentId}`)
+  },
 }

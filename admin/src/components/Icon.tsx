@@ -1,5 +1,5 @@
 interface IconProps {
-  type: 'file' | 'checkbox' | 'form' | 'copy' | 'users' | 'check-circle' | 'clock' | 'slash' | 'trending-down' | 'search' | 'target' | 'info' | 'activity' | 'log-in' | 'file-text' | 'user' | 'zap' | 'circle' | 'lightbulb' | 'user-plus' | 'x-circle' | 'minus-circle' | 'filter' | 'chevron-up' | 'chevron-down' | 'x'
+  type: 'file' | 'checkbox' | 'form' | 'copy' | 'users' | 'check-circle' | 'clock' | 'slash' | 'trending-down' | 'search' | 'target' | 'info' | 'activity' | 'log-in' | 'file-text' | 'user' | 'zap' | 'circle' | 'lightbulb' | 'user-plus' | 'x-circle' | 'minus-circle' | 'filter' | 'chevron-up' | 'chevron-down' | 'x' | 'trash-2'
   size?: number
   color?: string
   className?: string
@@ -169,6 +169,14 @@ export function Icon({ type, size = 1, color = 'currentColor', className = '' }:
       <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
         <line x1="18" y1="6" x2="6" y2="18" />
         <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    ),
+    'trash-2': (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        <line x1="10" y1="11" x2="10" y2="17" />
+        <line x1="14" y1="11" x2="14" y2="17" />
       </svg>
     ),
   }

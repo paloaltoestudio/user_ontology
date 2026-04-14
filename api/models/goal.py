@@ -45,6 +45,27 @@ class GoalCompletion(Base):
         return f"<GoalCompletion(id={self.id}, goal_id={self.goal_id}, user_id={self.user_id}, first_completed_at={self.first_completed_at})>"
 
 
+class GoalAssignment(Base):
+    """Track goal assignments to users"""
+
+    __tablename__ = "goal_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    goal_id = Column(Integer, ForeignKey("goals.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    assigned_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Admin user who assigned it
+    due_date = Column(DateTime, nullable=True)  # Optional deadline
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    goal = relationship("Goal", lazy="joined", foreign_keys=[goal_id])
+
+    def __repr__(self) -> str:
+        return f"<GoalAssignment(id={self.id}, goal_id={self.goal_id}, user_id={self.user_id})>"
+
+
 class IdempotencyKey(Base):
     """Track processed idempotency keys to prevent duplicate event processing"""
 

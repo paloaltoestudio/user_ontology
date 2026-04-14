@@ -1,0 +1,96 @@
+- generic [ref=e4]:
+  - complementary [ref=e5]:
+    - generic [ref=e7]:
+      - generic [ref=e9]: FS
+      - heading "User Vision" [level=1] [ref=e10]
+    - navigation [ref=e11]:
+      - link "Dashboard" [ref=e12] [cursor=pointer]:
+        - /url: /dashboard
+      - link "Inbox" [ref=e13] [cursor=pointer]:
+        - /url: /suggestions
+      - link "Users" [ref=e14] [cursor=pointer]:
+        - /url: /users
+      - link "Forms" [ref=e15] [cursor=pointer]:
+        - /url: /forms
+      - link "Actions" [ref=e16] [cursor=pointer]:
+        - /url: /actions
+      - link "Goals" [ref=e17] [cursor=pointer]:
+        - /url: /goals
+    - button "Logout" [ref=e19] [cursor=pointer]
+  - generic [ref=e20]:
+    - generic [ref=e22]:
+      - heading "User Ontology" [level=1] [ref=e23]
+      - paragraph [ref=e24]: Track user lifecycle and activation metrics
+    - main [ref=e25]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - paragraph [ref=e32]: Total Users
+              - paragraph [ref=e33]: "3"
+            - img [ref=e35]
+          - generic [ref=e41]:
+            - generic [ref=e42]:
+              - paragraph [ref=e43]: Activated
+              - paragraph [ref=e44]: "0"
+              - paragraph [ref=e45]: 0% rate
+            - img [ref=e47]
+          - generic [ref=e51]:
+            - generic [ref=e52]:
+              - paragraph [ref=e53]: In Progress
+              - paragraph [ref=e54]: "0"
+            - img [ref=e56]
+          - generic [ref=e60]:
+            - generic [ref=e61]:
+              - paragraph [ref=e62]: Inactive
+              - paragraph [ref=e63]: "0"
+            - img [ref=e65]
+          - generic [ref=e69]:
+            - generic [ref=e70]:
+              - paragraph [ref=e71]: Churned
+              - paragraph [ref=e72]: "0"
+            - img [ref=e74]
+        - generic [ref=e78]:
+          - img [ref=e79]
+          - textbox "Search users by name, email, or company..." [ref=e82]
+          - button "Advanced Filters" [ref=e83] [cursor=pointer]:
+            - img [ref=e84]
+        - generic [ref=e86]:
+          - generic [ref=e88]:
+            - checkbox [ref=e89] [cursor=pointer]
+            - generic [ref=e90]: Select all
+          - table [ref=e92]:
+            - rowgroup [ref=e93]:
+              - row "Name Company Status Activation Last Active Action" [ref=e94]:
+                - columnheader [ref=e95]
+                - columnheader "Name" [ref=e97]
+                - columnheader "Company" [ref=e98]
+                - columnheader "Status" [ref=e99]
+                - columnheader "Activation" [ref=e100]
+                - columnheader "Last Active" [ref=e101]
+                - columnheader "Action" [ref=e102]
+            - rowgroup [ref=e103]:
+              - row "Luis luis@mail.com INC New 0% Today View Details →" [ref=e104]:
+                - cell [ref=e105]
+                - cell "Luis luis@mail.com" [ref=e107]
+                - cell "INC" [ref=e111]
+                - cell "New" [ref=e113]
+                - cell "0%" [ref=e115]
+                - cell "Today" [ref=e119]
+                - cell "View Details →" [ref=e121]
+              - row "Pedro pedro@mail.com ACME New 0% Today View Details →" [ref=e123]:
+                - cell [ref=e124]
+                - cell "Pedro pedro@mail.com" [ref=e126]
+                - cell "ACME" [ref=e130]
+                - cell "New" [ref=e132]
+                - cell "0%" [ref=e134]
+                - cell "Today" [ref=e138]
+                - cell "View Details →" [ref=e140]
+              - row "Pepito pepe@mail.com PAE New 0% 2 days ago View Details →" [ref=e142]:
+                - cell [ref=e143]
+                - cell "Pepito pepe@mail.com" [ref=e145]
+                - cell "PAE" [ref=e149]
+                - cell "New" [ref=e151]
+                - cell "0%" [ref=e153]
+                - cell "2 days ago" [ref=e157]
+                - cell "View Details →" [ref=e159]

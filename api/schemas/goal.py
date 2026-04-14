@@ -72,6 +72,47 @@ class GoalEventResponse(BaseModel):
     error: Optional[Dict[str, Any]] = Field(None, description="Error details if failed")
 
 
+class GoalAssignmentCreate(BaseModel):
+    """Request schema to assign goal to a single user"""
+
+    user_id: int = Field(..., description="User/Lead ID to assign goal to")
+    due_date: Optional[datetime] = Field(None, description="Optional deadline for the goal")
+
+
+class GoalAssignmentBulkCreate(BaseModel):
+    """Request schema to assign goal to multiple users"""
+
+    user_ids: list[int] = Field(..., min_items=1, description="List of User/Lead IDs to assign goal to")
+    due_date: Optional[datetime] = Field(None, description="Optional deadline for all assignments")
+
+
+class GoalAssignmentResponse(BaseModel):
+    """Response schema for goal assignment"""
+
+    id: int
+    goal_id: int
+    user_id: int
+    assigned_by: Optional[int] = None
+    due_date: Optional[datetime] = None
+    assigned_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    goal: Optional['GoalResponse'] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GoalAssignmentBulkResponse(BaseModel):
+    """Response schema for bulk goal assignments"""
+
+    success: bool = Field(..., description="Whether all assignments were created successfully")
+    assigned_count: int = Field(..., description="Number of users the goal was assigned to")
+    failed_count: int = Field(default=0, description="Number of assignments that failed")
+    assignments: list[GoalAssignmentResponse] = Field(default=[], description="Created assignments")
+    errors: Optional[Dict[str, str]] = Field(None, description="Errors for failed assignments")
+
+
 class ApiKeyCreate(BaseModel):
     """Request schema to create API key"""
 
@@ -96,3 +137,7 @@ class ApiKeyCreateResponse(ApiKeyResponse):
     """Response schema for API key creation (includes the actual key)"""
 
     key: str = Field(..., description="The actual API key - only shown at creation time")
+
+
+# Update forward references for nested schemas
+GoalAssignmentResponse.model_rebuild()

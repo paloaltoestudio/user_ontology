@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import logging
 
 from core.database import get_db
 from core.security import get_current_admin
 from models.user import User
-from models.goal import Goal, GoalCompletion
+from models.goal import Goal, GoalCompletion, GoalAssignment
 from models.lead import Lead
 from schemas.goal import (
     GoalCreate,
@@ -16,6 +17,10 @@ from schemas.goal import (
     GoalCompletionResponse,
     GoalEventRequest,
     GoalEventResponse,
+    GoalAssignmentCreate,
+    GoalAssignmentBulkCreate,
+    GoalAssignmentResponse,
+    GoalAssignmentBulkResponse,
 )
 from services.goal_service import (
     process_goal_event,
@@ -206,6 +211,248 @@ async def get_user_goal_completions(
     )
     completions = result.scalars().all()
     return completions
+
+
+# ============================================================================
+# Admin Endpoints - Goal Assignments
+# ============================================================================
+
+@router.post("/{goal_id}/assign", response_model=GoalAssignmentResponse, status_code=status.HTTP_201_CREATED)
+async def assign_goal_to_user(
+    goal_id: int,
+    request: GoalAssignmentCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(get_current_admin),
+):
+    """Assign a goal to a single user (admin only)"""
+    # Verify goal exists
+    result = await db.execute(
+        select(Goal).where(Goal.id == goal_id)
+    )
+    goal = result.scalars().first()
+
+    if not goal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Goal not found",
+        )
+
+    # Verify user exists
+    result = await db.execute(
+        select(Lead).where(Lead.id == request.user_id)
+    )
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Check if assignment already exists
+    result = await db.execute(
+        select(GoalAssignment).where(
+            and_(
+                GoalAssignment.goal_id == goal_id,
+                GoalAssignment.user_id == request.user_id
+            )
+        )
+    )
+    existing = result.scalars().first()
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Goal already assigned to this user",
+        )
+
+    # Create assignment
+    assignment = GoalAssignment(
+        goal_id=goal_id,
+        user_id=request.user_id,
+        assigned_by=admin_user.id,
+        due_date=request.due_date,
+    )
+    db.add(assignment)
+    await db.commit()
+    await db.refresh(assignment)
+    logger.info(f"Goal assigned: goal_id={goal_id}, user_id={request.user_id}, assigned_by={admin_user.id}")
+    return assignment
+
+
+@router.post("/{goal_id}/assign-bulk", response_model=GoalAssignmentBulkResponse, status_code=status.HTTP_201_CREATED)
+async def assign_goal_to_users_bulk(
+    goal_id: int,
+    request: GoalAssignmentBulkCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(get_current_admin),
+):
+    """Assign a goal to multiple users in bulk (admin only)"""
+    # Verify goal exists
+    result = await db.execute(
+        select(Goal).where(Goal.id == goal_id)
+    )
+    goal = result.scalars().first()
+
+    if not goal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Goal not found",
+        )
+
+    # Verify all users exist
+    result = await db.execute(
+        select(Lead).where(Lead.id.in_(request.user_ids))
+    )
+    existing_users = result.scalars().all()
+    existing_user_ids = {u.id for u in existing_users}
+    missing_user_ids = set(request.user_ids) - existing_user_ids
+
+    if missing_user_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Users not found: {missing_user_ids}",
+        )
+
+    # Check for existing assignments
+    result = await db.execute(
+        select(GoalAssignment).where(
+            and_(
+                GoalAssignment.goal_id == goal_id,
+                GoalAssignment.user_id.in_(request.user_ids)
+            )
+        )
+    )
+    existing_assignments = result.scalars().all()
+    existing_assignment_user_ids = {a.user_id for a in existing_assignments}
+    users_to_assign = set(request.user_ids) - existing_assignment_user_ids
+
+    if not users_to_assign:
+        return GoalAssignmentBulkResponse(
+            success=True,
+            assigned_count=0,
+            failed_count=len(existing_assignments),
+            assignments=[],
+            errors={str(uid): "Already assigned" for uid in existing_assignment_user_ids}
+        )
+
+    # Create assignments for new users
+    assignments = []
+    for user_id in users_to_assign:
+        assignment = GoalAssignment(
+            goal_id=goal_id,
+            user_id=user_id,
+            assigned_by=admin_user.id,
+            due_date=request.due_date,
+        )
+        db.add(assignment)
+        assignments.append(assignment)
+
+    await db.commit()
+
+    # Refresh all assignments to get their IDs
+    for assignment in assignments:
+        await db.refresh(assignment)
+
+    logger.info(f"Goal assigned in bulk: goal_id={goal_id}, user_count={len(assignments)}, assigned_by={admin_user.id}")
+
+    return GoalAssignmentBulkResponse(
+        success=True,
+        assigned_count=len(assignments),
+        failed_count=len(existing_assignment_user_ids),
+        assignments=assignments,
+        errors={str(uid): "Already assigned" for uid in existing_assignment_user_ids} if existing_assignment_user_ids else None
+    )
+
+
+@router.get("/{goal_id}/assignments", response_model=List[GoalAssignmentResponse])
+async def get_goal_assignments(
+    goal_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(get_current_admin),
+):
+    """Get all assignments for a goal (admin only)"""
+    # Verify goal exists
+    result = await db.execute(
+        select(Goal).where(Goal.id == goal_id)
+    )
+    goal = result.scalars().first()
+
+    if not goal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Goal not found",
+        )
+
+    # Get assignments with eager loading of goal
+    result = await db.execute(
+        select(GoalAssignment)
+        .where(GoalAssignment.goal_id == goal_id)
+        .options(selectinload(GoalAssignment.goal))
+        .order_by(GoalAssignment.assigned_at.desc())
+    )
+    assignments = result.unique().scalars().all()
+    return assignments
+
+
+@router.get("/user/{user_id}/assignments", response_model=List[GoalAssignmentResponse])
+async def get_user_goal_assignments(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(get_current_admin),
+):
+    """Get all goal assignments for a user (admin only)"""
+    # Verify user exists
+    result = await db.execute(
+        select(Lead).where(Lead.id == user_id)
+    )
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Get assignments with eager loading of goal
+    result = await db.execute(
+        select(GoalAssignment)
+        .where(GoalAssignment.user_id == user_id)
+        .options(selectinload(GoalAssignment.goal))
+        .order_by(GoalAssignment.assigned_at.desc())
+    )
+    assignments = result.unique().scalars().all()
+    return assignments
+
+
+@router.delete("/{goal_id}/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_goal_assignment(
+    goal_id: int,
+    assignment_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(get_current_admin),
+):
+    """Remove a goal assignment (admin only)"""
+    result = await db.execute(
+        select(GoalAssignment).where(
+            and_(
+                GoalAssignment.id == assignment_id,
+                GoalAssignment.goal_id == goal_id
+            )
+        )
+    )
+    assignment = result.scalars().first()
+
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found",
+        )
+
+    await db.delete(assignment)
+    await db.commit()
+    logger.info(f"Goal assignment removed: assignment_id={assignment_id}, goal_id={goal_id}, removed_by={admin_user.id}")
+    return None
 
 
 # ============================================================================
