@@ -22,7 +22,7 @@ export function ToggleSwitch({
       setIsTransitioning(true)
       onChange(!checked)
       // Reset transition state after animation completes
-      setTimeout(() => setIsTransitioning(false), 300)
+      setTimeout(() => setIsTransitioning(false), 250)
     }
   }
 
@@ -42,15 +42,15 @@ export function ToggleSwitch({
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0582BE] ${
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-250 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-950 focus:ring-[#0582BE] ${
           checked
-            ? 'bg-[#0582BE]'
-            : 'bg-slate-600'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg'}`}
+            ? 'bg-[#0582BE] shadow-md shadow-blue-500/30'
+            : 'bg-slate-700'
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:shadow-lg'}`}
       >
         {/* Toggle circle */}
         <span
-          className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-300 ${
+          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-250 ease-out ${
             checked ? 'translate-x-5' : 'translate-x-0.5'
           }`}
           aria-hidden="true"

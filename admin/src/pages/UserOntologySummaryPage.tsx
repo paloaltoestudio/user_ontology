@@ -7,7 +7,9 @@ import { useToast } from '../hooks/useToast'
 import { UserFilters, type FilterState } from '../components/UserFilters'
 import { leadsApi } from '../api/leads'
 import { actionsApi } from '../api/actions'
+import { goalsApi } from '../api/goals'
 import { Action } from '../types/action'
+import { Goal } from '../types/goal'
 
 type LeadStatus = 'new' | 'contacted' | 'qualified' | 'activated' | 'inactive' | 'churned'
 type FilterStatus = LeadStatus | 'all'
@@ -40,6 +42,9 @@ export function UserOntologySummaryPage() {
   const [isApplyingAction, setIsApplyingAction] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({})
+  const [selectedGoal, setSelectedGoal] = useState<number | null>(null)
+  const [isAssigningGoal, setIsAssigningGoal] = useState(false)
+  const [showGoalConfirmModal, setShowGoalConfirmModal] = useState(false)
 
   // Fetch leads from API
   const { data: leads = [], isLoading, error } = useQuery({
@@ -51,6 +56,12 @@ export function UserOntologySummaryPage() {
   const { data: availableActions = [] } = useQuery({
     queryKey: ['actions'],
     queryFn: () => actionsApi.listActions(),
+  })
+
+  // Fetch available goals
+  const { data: availableGoals = [] } = useQuery({
+    queryKey: ['goals'],
+    queryFn: () => goalsApi.listGoals(),
   })
 
   // Handle API errors
@@ -137,6 +148,30 @@ export function UserOntologySummaryPage() {
   const getSelectedActionName = () => {
     if (!selectedAction) return ''
     return availableActions.find((a) => a.id === selectedAction)?.name || ''
+  }
+
+  const getSelectedGoalName = () => {
+    if (!selectedGoal) return ''
+    return availableGoals.find((g) => g.id === selectedGoal)?.name || ''
+  }
+
+  const handleBulkAssignGoal = async () => {
+    if (!selectedGoal || selectedIds.size === 0) return
+
+    setIsAssigningGoal(true)
+    try {
+      await goalsApi.assignGoalToMultipleUsers(selectedGoal, Array.from(selectedIds))
+      showSuccess(`Goal assigned to ${selectedIds.size} user(s)`)
+      setSelectedIds(new Set())
+      setSelectedGoal(null)
+      setShowGoalConfirmModal(false)
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to assign goal'
+      showError(errorMsg)
+      console.error('Failed to assign goal:', err)
+    } finally {
+      setIsAssigningGoal(false)
+    }
   }
 
   const getStatusColor = (status: LeadStatus) => {
@@ -292,6 +327,32 @@ export function UserOntologySummaryPage() {
                           </button>
                         </div>
                       )}
+
+                      {/* Bulk Assign Goal Controls */}
+                      {selectedIds.size > 0 && (
+                        <div className="flex items-center gap-3">
+                          <div className="text-xs text-slate-400 font-medium">Assign Goal:</div>
+                          <select
+                            value={selectedGoal || ''}
+                            onChange={(e) => setSelectedGoal(e.target.value ? Number(e.target.value) : null)}
+                            className="px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm focus:border-[#0582BE] focus:outline-none focus:ring-1 focus:ring-[#0582BE]"
+                          >
+                            <option value="">Select a goal...</option>
+                            {availableGoals.filter((goal) => goal.is_active).map((goal) => (
+                              <option key={goal.id} value={goal.id}>
+                                {goal.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => setShowGoalConfirmModal(true)}
+                            disabled={!selectedGoal || isAssigningGoal}
+                            className="px-4 py-2 bg-gradient-to-r from-[#0582BE] to-blue-600 hover:from-[#0582BE] hover:to-blue-700 disabled:opacity-50 text-white text-sm rounded transition font-medium whitespace-nowrap"
+                          >
+                            {isAssigningGoal ? 'Assigning...' : 'Assign Goal'}
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Table */}
@@ -431,6 +492,37 @@ export function UserOntologySummaryPage() {
                 className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#0582BE] to-blue-600 hover:from-[#0582BE] hover:to-blue-700 rounded transition disabled:opacity-50"
               >
                 {isApplyingAction ? 'Applying...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Goal Assignment Confirmation Modal */}
+      {showGoalConfirmModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <h2 className="text-lg font-semibold text-white mb-2">
+              Assign Goal?
+            </h2>
+            <p className="text-sm text-slate-300 mb-6">
+              This will assign <span className="font-medium">"{getSelectedGoalName()}"</span> to{' '}
+              <span className="font-medium">{selectedIds.size} user{selectedIds.size !== 1 ? 's' : ''}</span>.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowGoalConfirmModal(false)}
+                disabled={isAssigningGoal}
+                className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkAssignGoal}
+                disabled={isAssigningGoal}
+                className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#0582BE] to-blue-600 hover:from-[#0582BE] hover:to-blue-700 rounded transition disabled:opacity-50"
+              >
+                {isAssigningGoal ? 'Assigning...' : 'Confirm'}
               </button>
             </div>
           </div>
