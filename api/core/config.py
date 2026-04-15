@@ -33,8 +33,15 @@ class Settings(BaseSettings):
     N8N_WEBHOOK_URL: Optional[str] = None
     N8N_API_KEY: Optional[str] = None
 
+    # MCP Server Settings
+    ENABLE_MCP: bool = True  # Enable MCP server on startup
+    MCP_PORT: Optional[int] = None  # Optional: MCP server port (defaults to stdio)
+
     # Admin Setup
     ADMIN_SETUP_KEY: str = "change-me-in-production"
+
+    # Server Port (for MCP base URL)
+    PORT: int = 8000
 
     class Config:
         env_file = ".env"
