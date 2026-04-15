@@ -88,7 +88,17 @@ export function Sidebar() {
         </Link>
       </nav>
 
-      <div className="p-4 border-t border-slate-800">
+      <div className="p-4 border-t border-slate-800 space-y-2">
+        <Link
+          to="/settings"
+          className={`block px-4 py-3 rounded-lg font-medium transition ${
+            location.pathname.startsWith('/settings')
+              ? 'bg-gradient-to-r from-[#0582BE] to-blue-600 text-white'
+              : 'text-slate-300 hover:bg-slate-800'
+          }`}
+        >
+          Settings
+        </Link>
         <button
           onClick={handleLogout}
           className="w-full px-4 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg transition font-medium border border-red-500/30"

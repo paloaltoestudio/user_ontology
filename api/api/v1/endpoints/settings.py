@@ -161,3 +161,31 @@ async def deactivate_api_key(
     api_key.is_active = False
     await db.commit()
     logger.info(f"API key deactivated: id={key_id}, deactivated_by={admin_user.id}")
+
+
+@router.delete("/api-keys/{key_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_api_key_permanently(
+    key_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(get_current_admin),
+):
+    """
+    Permanently delete an API key from the database (hard delete).
+
+    This is a destructive operation and cannot be undone. The key record will be
+    completely removed from the database.
+    """
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.id == key_id)
+    )
+    api_key = result.scalars().first()
+
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="API key not found",
+        )
+
+    await db.delete(api_key)
+    await db.commit()
+    logger.info(f"API key permanently deleted: id={key_id}, deleted_by={admin_user.id}")

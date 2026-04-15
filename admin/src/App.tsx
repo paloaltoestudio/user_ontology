@@ -11,6 +11,7 @@ import { GoalsPage } from './pages/GoalsPage'
 import { UserOntologySummaryPage } from './pages/UserOntologySummaryPage'
 import { UserDetailPageTabbed } from './pages/UserDetailPageTabbed'
 import { UserSuggestionsInboxPage } from './pages/UserSuggestionsInboxPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { ToastProvider, ToastContainer } from './components/Toast/ToastContainer'
 
@@ -94,6 +95,14 @@ function App() {
           element={
             <ProtectedRoute>
               <UserSuggestionsInboxPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <SettingsPage />
             </ProtectedRoute>
           }
         />
