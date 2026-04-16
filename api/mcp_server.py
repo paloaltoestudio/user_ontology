@@ -13,7 +13,7 @@ from typing import Any, Optional
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from mcp.server import Server
 from mcp.types import (
@@ -29,7 +29,6 @@ from core.config import settings
 from core.database import AsyncSessionLocal, engine, get_db
 from models.api_key import ApiKey
 from sqlalchemy import select
-import uvicorn
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -766,33 +765,33 @@ async def list_tools() -> list[Tool]:
 # HTTP SERVER FOR STREAMABLEHTTP PROTOCOL
 # ============================================================================
 
-# Create FastAPI app for HTTP MCP server
-mcp_app = FastAPI(
-    title="UserVision MCP Server",
-    description="MCP Server exposed via HTTP StreamableHttp protocol"
+# Create APIRouter for MCP endpoints (to be included in main FastAPI app)
+router = APIRouter(
+    prefix="/mcp",
+    tags=["mcp"]
 )
 
 
-@mcp_app.get("/")
-async def root():
+@router.get("/")
+async def mcp_root():
     """MCP Server info"""
     return {
         "name": "UserVision API MCP Server",
         "version": "1.0.0",
         "transport": "HTTP StreamableHttp",
         "api_base_url": state.base_url,
-        "connect_url": "http://localhost:8001/mcp",
+        "connect_url": "http://localhost:8000/mcp",
         "tools_available": len(get_tools()),
     }
 
 
-@mcp_app.get("/health")
-async def health():
-    """Health check"""
+@router.get("/health")
+async def mcp_health():
+    """MCP Health check"""
     return {"status": "ok", "service": "MCP Server"}
 
 
-@mcp_app.post("/mcp")
+@router.post("")
 async def handle_mcp_request(request: Request):
     """
     Handle MCP JSON-RPC 2.0 requests via HTTP StreamableHttp.
@@ -892,39 +891,21 @@ async def handle_mcp_request(request: Request):
 
 
 # ============================================================================
-# SERVER STARTUP
+# LOGGING
 # ============================================================================
 
-
-def run_http_server():
-    """Start the MCP server as an HTTP server using StreamableHttp"""
+def log_mcp_startup():
+    """Log MCP startup information"""
     logger.info("=" * 70)
-    logger.info("Starting UserVision API MCP Server (HTTP StreamableHttp Mode)")
+    logger.info("✓ MCP Server integrated into FastAPI")
     logger.info("=" * 70)
     logger.info(f"API Base URL: {state.base_url}")
-    logger.info(f"MCP Server URL: http://localhost:8001")
+    logger.info(f"MCP Endpoint: http://localhost:8000/mcp")
     logger.info("")
     logger.info("Available tools:")
     for tool in get_tools():
         logger.info(f"  - {tool.name}")
     logger.info("")
     logger.info("Connect MCP Inspector:")
-    logger.info("  npx @modelcontextprotocol/inspector --server-url http://localhost:8001/mcp")
+    logger.info("  npx @modelcontextprotocol/inspector http://localhost:8000/mcp")
     logger.info("=" * 70)
-
-    config = uvicorn.Config(
-        mcp_app,
-        host="127.0.0.1",
-        port=8001,
-        log_level="info",
-    )
-    server_instance = uvicorn.Server(config)
-
-    try:
-        asyncio.run(server_instance.serve())
-    except KeyboardInterrupt:
-        logger.info("Shutting down MCP Server...")
-
-
-if __name__ == "__main__":
-    run_http_server()
