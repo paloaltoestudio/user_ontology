@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import logging
 from fastapi import FastAPI
@@ -35,10 +36,13 @@ app.add_middleware(
 mcp_process = None
 
 
-@app.on_event("startup")
-async def startup_mcp_server():
-    """Start MCP server as subprocess on app startup"""
+def start_mcp_server_subprocess():
+    """Start MCP server as subprocess (called at module import time)"""
     global mcp_process
+
+    import time
+
+    logger.info("🔧 Starting MCP Server subprocess...")
 
     # Check if MCP should be enabled (from settings or env var)
     enable_mcp = os.getenv("ENABLE_MCP", str(app_settings.ENABLE_MCP)).lower() != "false"
@@ -48,21 +52,40 @@ async def startup_mcp_server():
         return
 
     try:
-        # Start MCP server as a subprocess
+        # Start MCP HTTP server as a subprocess on port 8001
+        # Use sys.executable to ensure we use the same Python interpreter (venv)
         mcp_process = subprocess.Popen(
-            ["python", "mcp_server.py"],
+            [sys.executable, "mcp_server.py"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            bufsize=1,  # Line buffered
+            bufsize=1,
         )
-        logger.info("✓ MCP Server started successfully (PID: %s)", mcp_process.pid)
-        logger.info("  → MCP tools are available to n8n, Claude, and other MCP clients")
-        logger.info("  → API Base URL: http://localhost:%d", app_settings.PORT)
+        time.sleep(1.5)
+
+        if mcp_process.poll() is None:  # Process is still running
+            logger.info("✓ MCP Server started successfully (PID: %s)", mcp_process.pid)
+            logger.info("  → MCP HTTP Server: http://localhost:8001")
+            logger.info("  → Connect Inspector: npx @modelcontextprotocol/inspector http://localhost:8001/mcp")
+        else:
+            # Process exited - read the error output
+            stdout, stderr = mcp_process.communicate(timeout=1)
+            error_msg = stderr or stdout or "Unknown error"
+            logger.warning("⚠ MCP Server process exited immediately")
+            logger.warning("Error output:\n%s", error_msg)
+            logger.warning("Try running manually to debug: python mcp_server.py")
+            mcp_process = None
     except Exception as e:
         logger.warning("⚠ Failed to start MCP Server: %s", str(e))
         logger.warning("  You can run it manually with: python mcp_server.py")
         mcp_process = None
+
+
+# Start MCP server when module loads (only in main process, not in reloader)
+# Check if MCP is already running to avoid conflicts during reloader cycles
+if not os.getenv("MCP_SERVER_STARTED"):
+    os.environ["MCP_SERVER_STARTED"] = "1"
+    start_mcp_server_subprocess()
 
 
 @app.on_event("shutdown")

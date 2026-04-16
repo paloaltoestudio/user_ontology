@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-MCP Server for UserVision API
+MCP Server for UserVision API - HTTP StreamableHttp Mode
 Exposes all FastAPI endpoints as MCP tools, accessible by any AI agent or system.
 Authentication via API keys stored in the database.
+Runs as an HTTP server using the StreamableHttp protocol.
 """
 
 import asyncio
@@ -12,22 +13,26 @@ from typing import Any, Optional
 from contextlib import asynccontextmanager
 
 import httpx
-from mcp.server import Server, NotImplementedError as MCPNotImplementedError
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import StreamingResponse
+from mcp.server import Server
 from mcp.types import (
     Tool,
     TextContent,
-    ToolResult,
+    CallToolResult,
     Resource,
     ResourceTemplate,
+    JSONRPCMessage,
 )
 
 from core.config import settings
 from core.database import AsyncSessionLocal, engine, get_db
 from models.api_key import ApiKey
 from sqlalchemy import select
+import uvicorn
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Create MCP Server
@@ -97,7 +102,7 @@ state = MCPServerState()
 
 
 @server.call_tool()
-async def handle_tool_call(name: str, arguments: dict) -> list[TextContent | ToolResult]:
+async def handle_tool_call(name: str, arguments: dict) -> list[TextContent | CallToolResult]:
     """Handle tool calls for all API operations"""
 
     if name == "authenticate":
@@ -758,24 +763,168 @@ async def list_tools() -> list[Tool]:
 
 
 # ============================================================================
+# HTTP SERVER FOR STREAMABLEHTTP PROTOCOL
+# ============================================================================
+
+# Create FastAPI app for HTTP MCP server
+mcp_app = FastAPI(
+    title="UserVision MCP Server",
+    description="MCP Server exposed via HTTP StreamableHttp protocol"
+)
+
+
+@mcp_app.get("/")
+async def root():
+    """MCP Server info"""
+    return {
+        "name": "UserVision API MCP Server",
+        "version": "1.0.0",
+        "transport": "HTTP StreamableHttp",
+        "api_base_url": state.base_url,
+        "connect_url": "http://localhost:8001/mcp",
+        "tools_available": len(get_tools()),
+    }
+
+
+@mcp_app.get("/health")
+async def health():
+    """Health check"""
+    return {"status": "ok", "service": "MCP Server"}
+
+
+@mcp_app.post("/mcp")
+async def handle_mcp_request(request: Request):
+    """
+    Handle MCP JSON-RPC 2.0 requests via HTTP StreamableHttp.
+    This endpoint is used by the MCP Inspector and other HTTP-based clients.
+    Implements the MCP protocol directly for HTTP transport.
+    """
+    try:
+        message = await request.json()
+        method = message.get("method", "")
+        params = message.get("params", {})
+        msg_id = message.get("id")
+
+        # Handle different MCP protocol methods
+        if method == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {},
+                        "resources": {}
+                    },
+                    "serverInfo": {
+                        "name": "UserVision API MCP",
+                        "version": "1.0.0"
+                    }
+                }
+            }
+
+        elif method == "tools/list":
+            # Get the registered tools from the server
+            tools = get_tools()
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "tools": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "inputSchema": tool.inputSchema
+                        }
+                        for tool in tools
+                    ]
+                }
+            }
+
+        elif method == "tools/call":
+            tool_name = params.get("name", "")
+            arguments = params.get("arguments", {})
+
+            # Call the tool through the handle_tool_call function
+            try:
+                result = await handle_tool_call(tool_name, arguments)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {
+                        "content": [
+                            {"type": "text", "text": str(r.text) if hasattr(r, 'text') else str(r)}
+                            for r in result
+                        ] if isinstance(result, list) else [{"type": "text", "text": str(result)}]
+                    }
+                }
+            except Exception as e:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": {
+                        "code": -32603,
+                        "message": f"Tool error: {str(e)}"
+                    }
+                }
+
+        else:
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {
+                    "code": -32601,
+                    "message": f"Method not found: {method}"
+                }
+            }
+
+    except Exception as e:
+        logger.error(f"Error handling MCP request: {e}", exc_info=True)
+        return {
+            "jsonrpc": "2.0",
+            "id": message.get("id", None) if 'message' in locals() else None,
+            "error": {
+                "code": -32700,
+                "message": "Parse error",
+                "data": str(e)
+            }
+        }
+
+
+# ============================================================================
 # SERVER STARTUP
 # ============================================================================
 
 
-async def main():
-    """Main entry point - start the MCP server"""
-    logger.info("Starting UserVision API MCP Server")
+def run_http_server():
+    """Start the MCP server as an HTTP server using StreamableHttp"""
+    logger.info("=" * 70)
+    logger.info("Starting UserVision API MCP Server (HTTP StreamableHttp Mode)")
+    logger.info("=" * 70)
     logger.info(f"API Base URL: {state.base_url}")
+    logger.info(f"MCP Server URL: http://localhost:8001")
+    logger.info("")
+    logger.info("Available tools:")
+    for tool in get_tools():
+        logger.info(f"  - {tool.name}")
+    logger.info("")
+    logger.info("Connect MCP Inspector:")
+    logger.info("  npx @modelcontextprotocol/inspector --server-url http://localhost:8001/mcp")
+    logger.info("=" * 70)
 
-    async with server:
-        logger.info("MCP Server initialized and ready")
-        logger.info("Available tools: authenticate, get_user, list_forms, create_form, etc.")
-        logger.info("Use authenticate tool with API key to begin")
+    config = uvicorn.Config(
+        mcp_app,
+        host="127.0.0.1",
+        port=8001,
+        log_level="info",
+    )
+    server_instance = uvicorn.Server(config)
 
-        # Keep server running
-        while True:
-            await asyncio.sleep(1)
+    try:
+        asyncio.run(server_instance.serve())
+    except KeyboardInterrupt:
+        logger.info("Shutting down MCP Server...")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_http_server()
