@@ -32,14 +32,28 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8000:8000"
     networks:
       - backend
     deploy:
       resources:
         limits:
           memory: 512m
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/app.conf:ro
+    depends_on:
+      - api
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 64m
 
 volumes:
   postgres_data:
