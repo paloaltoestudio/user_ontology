@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -43,7 +44,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = os.environ.get("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -64,8 +65,8 @@ def run_migrations_online() -> None:
     """
     import asyncio
 
-    # Get the SQLAlchemy URL from config
-    sqlalchemy_url = config.get_main_option("sqlalchemy.url")
+    # Get the SQLAlchemy URL from config, with env var override for production
+    sqlalchemy_url = os.environ.get("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
 
     # Create async engine
     connectable = create_async_engine(

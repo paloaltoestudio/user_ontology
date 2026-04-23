@@ -1,0 +1,49 @@
+# Version control
+.git
+.gitignore
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Development databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment files (secrets must not be baked into image)
+.env
+.env.*
+
+# Existing docker directory (Dockerfile lives at api/Dockerfile now)
+docker/
+
+# Tests and test artifacts
+tests/
+test_*.py
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation
+docs/
+*.md
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
