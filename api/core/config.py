@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -36,6 +37,13 @@ class Settings(BaseSettings):
     # MCP Server Settings
     ENABLE_MCP: bool = True  # Enable MCP server on startup
     MCP_PORT: Optional[int] = None  # Optional: MCP server port (defaults to stdio)
+
+    @field_validator("MCP_PORT", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
     # Admin Setup
     ADMIN_SETUP_KEY: str = "change-me-in-production"
