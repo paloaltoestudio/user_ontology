@@ -8,7 +8,7 @@ import { SuggestionDetailModal } from '../components/SuggestionDetailModal'
 
 export function UserSuggestionsInboxPage() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'pending' | 'applied'>('pending')
+  const [tab, setTab] = useState<'all' | 'pending' | 'applied'>('pending')
   const [priorityFilter, setPriorityFilter] = useState<SuggestionPriority | 'all'>('all')
   const [typeFilter, setTypeFilter] = useState<SuggestionType | 'all'>('all')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
