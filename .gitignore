@@ -55,8 +55,6 @@ logs/
 .coverage
 htmlcov/
 
-# Alembic
-versions/
 
 # Claude Code
 .claude/
