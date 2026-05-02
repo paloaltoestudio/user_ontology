@@ -20,6 +20,7 @@ class Lead(Base):
     company_url = Column(String(2048), nullable=True)
     # Form tracking
     status = Column(String(50), default="new", nullable=False, index=True)  # new, contacted, qualified, etc.
+    entry_source = Column(String(50), default="form", nullable=False)  # form, manual, api, csv
     form_data = Column(JSON, nullable=False)  # All submitted field values
     notes = Column(String(2000), nullable=True)  # Admin notes about the lead
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -30,8 +31,29 @@ class Lead(Base):
     webhook_deliveries = relationship("WebhookDelivery", back_populates="lead", cascade="all, delete-orphan")
     actions = relationship("Action", secondary="user_actions", back_populates="users")
 
+    status_history = relationship("LeadStatusHistory", back_populates="lead", cascade="all, delete-orphan", order_by="LeadStatusHistory.created_at")
+
     def __repr__(self) -> str:
         return f"<Lead(id={self.id}, form_id={self.form_id}, email={self.email}, status={self.status})>"
+
+
+class LeadStatusHistory(Base):
+    """Track status changes for a lead over time"""
+
+    __tablename__ = "lead_status_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_status = Column(String(50), nullable=True)
+    to_status = Column(String(50), nullable=False)
+    changed_by = Column(String(255), nullable=True)
+    note = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    lead = relationship("Lead", back_populates="status_history")
+
+    def __repr__(self) -> str:
+        return f"<LeadStatusHistory(lead_id={self.lead_id}, {self.from_status}→{self.to_status})>"
 
 
 class WebhookDelivery(Base):

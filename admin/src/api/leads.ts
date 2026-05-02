@@ -1,5 +1,10 @@
 import apiClient from './client'
 
+export interface LeadStats {
+  total: number
+  by_status: { status: string; count: number; percentage: number }[]
+}
+
 interface Lead {
   id: number
   form_id: number
@@ -50,4 +55,22 @@ export const leadsApi = {
       action_id: actionId,
     })
   },
+
+  getStats: async (): Promise<LeadStats> => {
+    const response = await apiClient.get<LeadStats>('/api/v1/leads/stats')
+    return response.data
+  },
+
+  getJourney: async (leadId: number): Promise<LeadJourney> => {
+    const response = await apiClient.get<LeadJourney>(`/api/v1/leads/${leadId}/journey`)
+    return response.data
+  },
+}
+
+export interface LeadJourney {
+  lead: { id: number; name: string; last_name: string; email: string; company: string | null; status: string; created_at: string; entry_source: string }
+  entry: { source: string; form_id: number | null; form_name: string | null; at: string }
+  goals: { id: number; goal_id: number; name: string; description: string | null; completed: boolean; completed_at: string | null; assigned_at: string; due_date: string | null }[]
+  actions: { id: number; name: string; description: string | null; last_triggered_at: string | null; last_success: boolean | null }[]
+  status_history: { id: number; from_status: string | null; to_status: string; changed_by: string | null; note: string | null; created_at: string }[]
 }

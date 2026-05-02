@@ -10,9 +10,8 @@ import {
   EventNode,
   GoalNode,
   ActionNode,
-  SuggestionNode,
+  EntryNode,
 } from '../components/UserJourneyNodes'
-import { userJourneyFlow } from '../data/mockUserData'
 import { mockUsers } from '../data/mockUsers'
 import { useToast } from '../hooks/useToast'
 import { leadsApi } from '../api/leads'
@@ -48,7 +47,7 @@ const nodeTypes = {
   eventNode: EventNode,
   goalNode: GoalNode,
   actionNode: ActionNode,
-  suggestionNode: SuggestionNode,
+  entryNode: EntryNode,
 }
 
 type TabType = 'journey' | 'details'
@@ -74,8 +73,96 @@ export function UserDetailPageTabbed() {
   const [deleteGoalData, setDeleteGoalData] = useState<{ goalId: number; assignmentId: number; goalName: string } | null>(null)
   const [isRemovingGoal, setIsRemovingGoal] = useState(false)
 
-  const [nodes, , onNodesChange] = useNodesState(userJourneyFlow.nodes)
-  const [edges, , onEdgesChange] = useEdgesState(userJourneyFlow.edges)
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+
+  const { data: journey, refetch: refetchJourney } = useQuery({
+    queryKey: ['lead-journey', userId],
+    queryFn: () => leadsApi.getJourney(Number(userId)),
+    enabled: !!userId,
+  })
+
+  useEffect(() => {
+    if (activeTab === 'journey') {
+      refetchJourney()
+    }
+  }, [activeTab])
+
+  useEffect(() => {
+    if (!journey) return
+
+    const newNodes: any[] = []
+    const newEdges: any[] = []
+
+    const CX = 500
+    const CY = 380
+    const RADIUS = 300
+    const toRad = (deg: number) => (deg * Math.PI) / 180
+
+    const radialPos = (spokeDeg: number, index: number, total: number, radius = RADIUS) => {
+      const spread = total <= 1 ? 0 : Math.min(60, (total - 1) * 22)
+      const start = spokeDeg - spread / 2
+      const angle = total === 1 ? spokeDeg : start + (index / (total - 1)) * spread
+      return {
+        x: CX + radius * Math.cos(toRad(angle)),
+        y: CY + radius * Math.sin(toRad(angle)),
+      }
+    }
+
+    const edge = (id: string, source: string, target: string, color: string, animated = false) => ({
+      id, source, target, animated,
+      style: { stroke: color, strokeDasharray: '6,3', strokeWidth: 1.5, opacity: 0.5 },
+    })
+
+    // User — center
+    newNodes.push({
+      id: 'user', type: 'userNode', position: { x: CX - 48, y: CY - 60 },
+      data: { name: `${journey.lead.name} ${journey.lead.last_name}`, email: journey.lead.email, company: journey.lead.company, status: journey.lead.status },
+    })
+
+    // Entry — bottom (270°)
+    const entryPos = radialPos(270, 0, 1)
+    newNodes.push({
+      id: 'entry', type: 'entryNode', position: entryPos,
+      data: { source: journey.entry.source, formName: journey.entry.form_name, at: journey.entry.at },
+    })
+    newEdges.push(edge('e-user-entry', 'user', 'entry', '#06B6D4'))
+
+    // Goals — right (0°)
+    journey.goals.forEach((g, i) => {
+      const id = `goal-${g.id}`
+      newNodes.push({
+        id, type: 'goalNode', position: radialPos(0, i, journey.goals.length),
+        data: { name: g.name, completed: g.completed, completedAt: g.completed_at, dueDate: g.due_date },
+      })
+      newEdges.push(edge(`e-user-${id}`, 'user', id, g.completed ? '#10B981' : '#FBBF24', g.completed))
+    })
+
+    // Actions — left (180°)
+    journey.actions.forEach((a, i) => {
+      const id = `action-${a.id}`
+      newNodes.push({
+        id, type: 'actionNode', position: radialPos(180, i, journey.actions.length),
+        data: { name: a.name, success: a.last_success, triggeredAt: a.last_triggered_at },
+      })
+      const color = a.last_triggered_at === null ? '#A78BFA' : a.last_success ? '#10B981' : '#F43F5E'
+      newEdges.push(edge(`e-user-${id}`, 'user', id, color))
+    })
+
+    // Status history — top (90°)
+    const lastStatusIdx = journey.status_history.length - 1
+    journey.status_history.forEach((h, i) => {
+      const id = `status-${h.id}`
+      newNodes.push({
+        id, type: 'eventNode', position: radialPos(90, i, journey.status_history.length),
+        data: { label: h.to_status.toUpperCase(), sublabel: h.from_status ? `← ${h.from_status}` : 'initial status', timestamp: h.created_at, color: '#60A5FA', isCurrent: i === lastStatusIdx },
+      })
+      newEdges.push(edge(`e-user-${id}`, 'user', id, '#60A5FA'))
+    })
+
+    setNodes(newNodes)
+    setEdges(newEdges)
+  }, [journey, setNodes, setEdges])
 
   // Fetch lead from API
   const { data: user, isLoading, error } = useQuery({

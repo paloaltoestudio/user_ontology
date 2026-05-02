@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 import httpx
@@ -10,8 +10,10 @@ from core.database import get_db, AsyncSessionLocal
 from core.security import get_current_admin
 from models.user import User
 from models.form import Form
-from models.lead import Lead, WebhookDelivery
-from models.action import Action
+from models.lead import Lead, LeadStatusHistory, WebhookDelivery
+from models.action import Action, ActionLog
+from models.goal import Goal, GoalCompletion, GoalAssignment
+from models.form import Form
 from schemas.lead import LeadCreate, LeadResponse, LeadUpdate
 from schemas.action import BulkApplyActionRequest
 from services.action_service import trigger_form_actions, trigger_action
@@ -155,6 +157,30 @@ async def list_leads(
     return leads
 
 
+@router.get("/stats")
+async def get_lead_stats(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Return total lead count and breakdown by status."""
+    rows = await db.execute(
+        select(Lead.status, func.count(Lead.id)).group_by(Lead.status)
+    )
+    counts = rows.all()
+
+    total = sum(c for _, c in counts)
+    by_status = [
+        {
+            "status": status,
+            "count": count,
+            "percentage": round(count / total * 100, 1) if total else 0,
+        }
+        for status, count in sorted(counts, key=lambda x: x[1], reverse=True)
+    ]
+
+    return {"total": total, "by_status": by_status}
+
+
 @router.get("/{lead_id}", response_model=LeadResponse)
 async def get_lead(
     lead_id: int,
@@ -195,8 +221,16 @@ async def update_lead(
             detail="Lead not found",
         )
 
-    # Update fields
     update_data = lead_data.model_dump(exclude_unset=True)
+
+    if "status" in update_data and update_data["status"] != lead.status:
+        db.add(LeadStatusHistory(
+            lead_id=lead.id,
+            from_status=lead.status,
+            to_status=update_data["status"],
+            changed_by=admin_user.email,
+        ))
+
     for field, value in update_data.items():
         setattr(lead, field, value)
 
@@ -291,4 +325,101 @@ async def apply_action_to_leads(
     return {
         "message": f"Action applied to {applied_count} lead(s)",
         "applied_count": applied_count,
+    }
+
+
+@router.get("/{lead_id}/journey")
+async def get_lead_journey(
+    lead_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Return all journey data for a lead: form, goals, actions, status history."""
+    result = await db.execute(
+        select(Lead).options(
+            selectinload(Lead.status_history),
+        ).where(Lead.id == lead_id)
+    )
+    lead = result.scalars().unique().first()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    # Form
+    form_result = await db.execute(select(Form).where(Form.id == lead.form_id))
+    form = form_result.scalars().first()
+
+    # Goal assignments with completion status
+    assignments_result = await db.execute(
+        select(GoalAssignment, Goal, GoalCompletion)
+        .join(Goal, GoalAssignment.goal_id == Goal.id)
+        .outerjoin(GoalCompletion, (GoalCompletion.goal_id == Goal.id) & (GoalCompletion.user_id == lead_id))
+        .where(GoalAssignment.user_id == lead_id)
+    )
+    goals = [
+        {
+            "id": assignment.id,
+            "goal_id": goal.id,
+            "name": goal.name,
+            "description": goal.description,
+            "completed": completion is not None,
+            "completed_at": completion.first_completed_at.isoformat() if completion else None,
+            "assigned_at": assignment.assigned_at.isoformat(),
+            "due_date": assignment.due_date.isoformat() if assignment.due_date else None,
+        }
+        for assignment, goal, completion in assignments_result.all()
+    ]
+
+    # Actions: join ActionLog → Action to get every action ever triggered for this lead
+    triggered_actions_result = await db.execute(
+        select(Action, ActionLog)
+        .join(ActionLog, ActionLog.action_id == Action.id)
+        .where(ActionLog.user_id == lead_id)
+        .order_by(ActionLog.created_at.desc())
+    )
+    seen_action_ids: set[int] = set()
+    actions = []
+    for action, log in triggered_actions_result.all():
+        if action.id not in seen_action_ids:
+            seen_action_ids.add(action.id)
+            actions.append({
+                "id": action.id,
+                "name": action.name,
+                "description": action.description,
+                "last_triggered_at": log.created_at.isoformat(),
+                "last_success": log.success,
+            })
+
+    # Status history
+    status_history = [
+        {
+            "id": h.id,
+            "from_status": h.from_status,
+            "to_status": h.to_status,
+            "changed_by": h.changed_by,
+            "note": h.note,
+            "created_at": h.created_at.isoformat(),
+        }
+        for h in lead.status_history
+    ]
+
+    return {
+        "lead": {
+            "id": lead.id,
+            "name": lead.name,
+            "last_name": lead.last_name,
+            "email": lead.email,
+            "company": lead.company,
+            "status": lead.status,
+            "created_at": lead.created_at.isoformat(),
+            "entry_source": lead.entry_source,
+        },
+        "entry": {
+            "source": lead.entry_source,
+            "form_id": form.id if form else None,
+            "form_name": form.name if form else None,
+            "at": lead.created_at.isoformat(),
+        },
+        "goals": goals,
+        "actions": actions,
+        "status_history": status_history,
     }

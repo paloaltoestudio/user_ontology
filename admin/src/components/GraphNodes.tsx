@@ -10,12 +10,13 @@ interface StageNodeProps {
     label: string
     count: number
     percentage: number
-    stage: 'registered' | 'in_activation' | 'activated' | 'dropped'
+    stage: string
+    color?: { bg: string; border: string; text: string }
   }
 }
 
 export function StageNode({ data }: StageNodeProps) {
-  const colors = stageColorMap[data.stage]
+  const colors = stageColorMap[data.stage as Stage] ?? data.color ?? { bg: '#1e293b', border: '#64748b', text: '#94a3b8' }
   const [isHovered, setIsHovered] = useState(false)
   const [nodePos, setNodePos] = useState({ x: 0, y: 0 })
   const nodeRef = useRef<HTMLDivElement>(null)
@@ -48,7 +49,7 @@ export function StageNode({ data }: StageNodeProps) {
           {/* Inner content */}
           <div className="text-center">
             <div className="text-2xl font-bold text-white">{data.count}</div>
-            <div className="text-xs text-slate-300">{data.stage === 'in_activation' ? 'ACTIVATING' : data.stage.toUpperCase().replace('_', ' ')}</div>
+            <div className="text-xs text-slate-300">{data.label.toUpperCase().replace('_', ' ')}</div>
           </div>
         </div>
 
@@ -61,8 +62,8 @@ export function StageNode({ data }: StageNodeProps) {
         </div>
       </div>
 
-      {/* Tooltip - rendered in portal */}
-      {isHovered && createPortal(
+      {/* Tooltip - only for known stages */}
+      {isHovered && (data.stage in stageColorMap) && createPortal(
         <StageDetailTooltip stage={data.stage as Stage} position={nodePos} />,
         document.body
       )}
