@@ -5,6 +5,8 @@ import { formsApi } from '../api/forms'
 import { Form, FormField } from '../types/form'
 import { useToast } from '../hooks/useToast'
 
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
+
 export function PublicFormPage() {
   const { formId } = useParams()
   const { success: showSuccess, error: showError } = useToast()
@@ -195,7 +197,7 @@ export function PublicFormPage() {
 
       // Submit to API with both structured lead data and full form data
       const response = await fetch(
-        `${window.location.origin}/api/v1/leads/submit/${form.id}`,
+        `${API_BASE_URL}/api/v1/leads/submit/${form.id}`,
         {
           method: 'POST',
           headers: {
