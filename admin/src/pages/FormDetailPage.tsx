@@ -10,9 +10,10 @@ import { WebhookManager } from '../components/Forms/WebhookManager'
 import { EmbedModal } from '../components/Forms/EmbedModal'
 import { LeadFieldMappingUI } from '../components/Forms/LeadFieldMappingUI'
 import { FormActionsManager } from '../components/Forms/FormActionsManager'
+import { ExternalIntegrationsPanel } from '../components/Forms/ExternalIntegrationsPanel'
 import { useToast } from '../hooks/useToast'
 
-type TabType = 'general' | 'webhooks' | 'mapping' | 'steps' | 'actions'
+type TabType = 'general' | 'webhooks' | 'mapping' | 'steps' | 'actions' | 'external'
 
 export function FormDetailPage() {
   const { formId } = useParams()
@@ -192,6 +193,7 @@ export function FormDetailPage() {
     { id: 'webhooks', label: 'Webhooks' },
     { id: 'steps', label: 'Steps' },
     { id: 'mapping', label: 'Lead Mapping' },
+    { id: 'external', label: 'External Integrations' },
   ]
 
   const handleSaveMapping = () => {
@@ -485,6 +487,17 @@ export function FormDetailPage() {
                     Attach actions to this form to automatically trigger external workflows when the form is submitted. Actions send webhook requests to your configured endpoints.
                   </p>
                   <FormActionsManager formId={displayForm.id} />
+                </div>
+              )}
+
+              {/* External Integrations Tab */}
+              {activeTab === 'external' && (
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-8">
+                  <h2 className="text-xl font-semibold text-white mb-2">External Integrations</h2>
+                  <p className="text-slate-400 text-sm mb-8">
+                    Connect your existing WordPress or HTML forms. External forms POST to your unique webhook URL — submissions are stored and converted to leads using your field mapping.
+                  </p>
+                  {displayForm && <ExternalIntegrationsPanel form={displayForm} />}
                 </div>
               )}
             </div>

@@ -114,6 +114,8 @@ class FormResponse(FormBase):
     steps: List[FormStepResponse]
     display_as_steps: bool
     webhooks: List[str]
+    webhook_token: Optional[str] = None
+    external_field_mapping: Optional[Dict[str, str]] = None
     created_at: datetime
     updated_at: datetime
 

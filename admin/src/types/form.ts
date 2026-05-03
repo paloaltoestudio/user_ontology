@@ -32,6 +32,41 @@ export interface LeadFieldMapping {
   company_url?: string
 }
 
+export interface ExternalFieldMapping {
+  email?: string
+  name?: string
+  last_name?: string
+  phone?: string
+  company?: string
+  company_url?: string
+}
+
+export interface ExternalSubmission {
+  id: number
+  form_id: number
+  raw_payload: Record<string, unknown>
+  content_type?: string
+  status: 'pending' | 'processed' | 'failed'
+  lead_id?: number
+  error_message?: string
+  created_at: string
+  processed_at?: string
+}
+
+export interface ExternalSubmissionStats {
+  pending: number
+  processed: number
+  failed: number
+  total: number
+}
+
+export interface ProcessResult {
+  processed: number
+  stopped_at: number | null
+  remaining_pending: number
+  message: string
+}
+
 export interface Form {
   id: number
   name: string
@@ -40,6 +75,8 @@ export interface Form {
   webhooks?: string[]
   display_as_steps: boolean
   lead_field_mapping?: LeadFieldMapping
+  webhook_token?: string
+  external_field_mapping?: ExternalFieldMapping
   actions?: Array<{ id: number; name: string; description?: string; webhook_url: string }>
   steps: FormStep[]
   created_at: string

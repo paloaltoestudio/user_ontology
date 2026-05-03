@@ -1,5 +1,5 @@
 import apiClient from './client'
-import { Form, FormCreateRequest } from '../types/form'
+import { Form, FormCreateRequest, ExternalSubmission, ExternalSubmissionStats, ExternalFieldMapping, ProcessResult } from '../types/form'
 
 export const formsApi = {
   listForms: async (): Promise<Form[]> => {
@@ -95,5 +95,51 @@ export const formsApi = {
     await apiClient.delete(
       `/api/v1/actions/forms/${formId}/actions/${actionId}`
     )
+  },
+
+  getExternalSubmissions: async (formId: number, submissionStatus?: string): Promise<ExternalSubmission[]> => {
+    const params = submissionStatus ? { submission_status: submissionStatus } : {}
+    const response = await apiClient.get<ExternalSubmission[]>(
+      `/api/v1/forms/${formId}/external-submissions`,
+      { params }
+    )
+    return response.data
+  },
+
+  getExternalSubmissionStats: async (formId: number): Promise<ExternalSubmissionStats> => {
+    const response = await apiClient.get<ExternalSubmissionStats>(
+      `/api/v1/forms/${formId}/external-submissions/stats`
+    )
+    return response.data
+  },
+
+  saveExternalMapping: async (
+    formId: number,
+    mapping: ExternalFieldMapping
+  ): Promise<{ message: string }> => {
+    const response = await apiClient.put(
+      `/api/v1/forms/${formId}/external-mapping`,
+      { mapping }
+    )
+    return response.data
+  },
+
+  mapAndProcess: async (
+    formId: number,
+    submissionId: number,
+    mapping: ExternalFieldMapping
+  ): Promise<ProcessResult> => {
+    const response = await apiClient.post<ProcessResult>(
+      `/api/v1/forms/${formId}/external-submissions/${submissionId}/map-and-process`,
+      { mapping }
+    )
+    return response.data
+  },
+
+  reprocessExternalSubmissions: async (formId: number): Promise<ProcessResult> => {
+    const response = await apiClient.post<ProcessResult>(
+      `/api/v1/forms/${formId}/external-submissions/reprocess`
+    )
+    return response.data
   },
 }
