@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 import secrets
 
 
@@ -21,10 +22,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     conn = op.get_bind()
+    inspector = inspect(conn)
 
-    # Check existing columns to make the migration idempotent
-    existing_cols = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(forms)")).fetchall()}
-    existing_tables = {row[0] for row in conn.execute(sa.text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+    existing_cols = {col['name'] for col in inspector.get_columns('forms')}
+    existing_tables = set(inspector.get_table_names())
 
     if 'webhook_token' not in existing_cols:
         op.add_column('forms', sa.Column('webhook_token', sa.String(64), nullable=True))
@@ -32,8 +33,7 @@ def upgrade() -> None:
     if 'external_field_mapping' not in existing_cols:
         op.add_column('forms', sa.Column('external_field_mapping', sa.JSON(), nullable=True))
 
-    # Create index only if it doesn't exist
-    existing_indexes = {row[1] for row in conn.execute(sa.text("PRAGMA index_list(forms)")).fetchall()}
+    existing_indexes = {idx['name'] for idx in inspector.get_indexes('forms')}
     if 'ix_forms_webhook_token' not in existing_indexes:
         op.create_index('ix_forms_webhook_token', 'forms', ['webhook_token'], unique=True)
 

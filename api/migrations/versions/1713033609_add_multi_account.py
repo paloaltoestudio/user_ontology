@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 revision: str = "1713033609"
@@ -19,13 +20,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     conn = op.get_bind()
+    inspector = inspect(conn)
 
-    existing_tables = {
-        row[0]
-        for row in conn.execute(
-            sa.text("SELECT name FROM sqlite_master WHERE type='table'")
-        ).fetchall()
-    }
+    existing_tables = set(inspector.get_table_names())
 
     # Create accounts table
     if "accounts" not in existing_tables:
@@ -64,10 +61,7 @@ def upgrade() -> None:
         op.create_index("ix_memberships_account_id", "memberships", ["account_id"])
 
     # Add new columns to users (idempotent)
-    user_cols = {
-        row[1]
-        for row in conn.execute(sa.text("PRAGMA table_info(users)")).fetchall()
-    }
+    user_cols = {col['name'] for col in inspector.get_columns('users')}
 
     if "is_superadmin" not in user_cols:
         op.add_column("users", sa.Column("is_superadmin", sa.Boolean(), nullable=False, server_default="0"))

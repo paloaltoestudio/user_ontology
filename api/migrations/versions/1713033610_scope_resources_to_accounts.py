@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 revision: str = "1713033610"
@@ -18,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def _existing_cols(conn, table: str) -> set:
-    return {row[1] for row in conn.execute(sa.text(f"PRAGMA table_info({table})")).fetchall()}
+    return {col['name'] for col in inspect(conn).get_columns(table)}
 
 
 def upgrade() -> None:
