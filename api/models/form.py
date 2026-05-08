@@ -19,6 +19,7 @@ class Form(Base):
     lead_field_mapping = Column(JSON, default={}, nullable=False)  # Maps lead properties to form field names: {"name": "field_name", "email": "contact_email", ...}
     webhook_token = Column(String(64), unique=True, index=True, nullable=True)  # Secret token for inbound external webhook URL
     external_field_mapping = Column(JSON, nullable=True)  # Maps lead properties to incoming payload keys: {"email": "contact_email", "name": "first_name"}
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

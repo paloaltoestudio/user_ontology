@@ -30,6 +30,7 @@ class Action(Base):
     description = Column(String(1000), nullable=True)
     webhook_url = Column(String(2000), nullable=False)
     auto_send = Column(Boolean, default=False, nullable=False)  # If true, execute immediately when assigned to user
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

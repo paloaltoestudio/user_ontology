@@ -35,6 +35,8 @@ class UserResponse(UserBase):
     id: int
     role: UserRole
     is_active: bool
+    is_superadmin: bool = False
+    last_active_account_id: Optional[int] = None
     lead_score: int
     user_metadata: Dict[str, Any]
     created_at: datetime

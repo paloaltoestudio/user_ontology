@@ -26,6 +26,9 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       useAuthStore.getState().clearTokens()
     }
+    if (error.response?.status === 403 && error.response?.data?.detail === 'no_account') {
+      window.location.replace('/create-account')
+    }
     return Promise.reject(error)
   }
 )

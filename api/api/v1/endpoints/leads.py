@@ -7,8 +7,9 @@ import httpx
 import logging
 
 from core.database import get_db, AsyncSessionLocal
-from core.security import get_current_admin
+from core.security import get_current_admin, get_current_account
 from models.user import User
+from models.account import Account
 from models.form import Form
 from models.lead import Lead, LeadStatusHistory, WebhookDelivery
 from models.action import Action, ActionLog
@@ -21,6 +22,16 @@ from services.action_service import trigger_form_actions, trigger_action
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+
+async def _get_owned_lead(lead_id: int, account: Account, db: AsyncSession) -> Lead:
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalars().first()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+    if lead.account_id is not None and lead.account_id != account.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return lead
 
 
 async def send_webhooks(lead_id: int, form_id: int, form_data: dict, webhook_urls: list):
@@ -87,9 +98,10 @@ async def submit_form(
             detail="Form not found",
         )
 
-    # Create lead with static fields
+    # Create lead with static fields; inherit account from the form
     lead = Lead(
         form_id=form_id,
+        account_id=form.account_id,
         name=lead_data.name,
         last_name=lead_data.last_name,
         email=lead_data.email,
@@ -135,47 +147,45 @@ async def list_leads(
     status: Optional[str] = Query(None, description="Filter by status"),
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
-    """List leads (admin only)"""
+    """List leads for the active account (admin only)"""
     query = select(Lead).options(selectinload(Lead.webhook_deliveries))
 
-    # Apply filters
-    filters = []
+    filters = [Lead.account_id == account.id]
     if form_id:
         filters.append(Lead.form_id == form_id)
     if status:
         filters.append(Lead.status == status)
 
-    if filters:
-        query = query.where(and_(*filters))
-
-    query = query.order_by(Lead.created_at.desc())
+    query = query.where(and_(*filters)).order_by(Lead.created_at.desc())
 
     result = await db.execute(query)
-    leads = result.scalars().unique().all()
-
-    return leads
+    return result.scalars().unique().all()
 
 
 @router.get("/stats")
 async def get_lead_stats(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
-    """Return total lead count and breakdown by status."""
+    """Return total lead count and breakdown by status for the active account."""
     rows = await db.execute(
-        select(Lead.status, func.count(Lead.id)).group_by(Lead.status)
+        select(Lead.status, func.count(Lead.id))
+        .where(Lead.account_id == account.id)
+        .group_by(Lead.status)
     )
     counts = rows.all()
 
     total = sum(c for _, c in counts)
     by_status = [
         {
-            "status": status,
+            "status": s,
             "count": count,
             "percentage": round(count / total * 100, 1) if total else 0,
         }
-        for status, count in sorted(counts, key=lambda x: x[1], reverse=True)
+        for s, count in sorted(counts, key=lambda x: x[1], reverse=True)
     ]
 
     return {"total": total, "by_status": by_status}
@@ -186,20 +196,15 @@ async def get_lead(
     lead_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get a specific lead (admin only)"""
+    lead = await _get_owned_lead(lead_id, account, db)
+
     result = await db.execute(
         select(Lead).options(selectinload(Lead.webhook_deliveries)).where(Lead.id == lead_id)
     )
-    lead = result.scalars().unique().first()
-
-    if not lead:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lead not found",
-        )
-
-    return lead
+    return result.scalars().unique().first()
 
 
 @router.put("/{lead_id}", response_model=LeadResponse)
@@ -208,13 +213,10 @@ async def update_lead(
     lead_data: LeadUpdate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Update lead status and notes (admin only)"""
-    result = await db.execute(
-        select(Lead).where(Lead.id == lead_id)
-    )
-    lead = result.scalars().first()
-
+    lead = await _get_owned_lead(lead_id, account, db)
     if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -245,19 +247,10 @@ async def delete_lead(
     lead_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Delete a lead (admin only)"""
-    result = await db.execute(
-        select(Lead).where(Lead.id == lead_id)
-    )
-    lead = result.scalars().first()
-
-    if not lead:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lead not found",
-        )
-
+    lead = await _get_owned_lead(lead_id, account, db)
     await db.delete(lead)
     await db.commit()
 
@@ -267,6 +260,7 @@ async def apply_action_to_leads(
     request: BulkApplyActionRequest,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Apply an action to multiple leads (admin only)"""
     # Verify action exists
@@ -281,9 +275,9 @@ async def apply_action_to_leads(
             detail="Action not found",
         )
 
-    # Verify all leads exist
+    # Verify leads exist and belong to the current account
     leads_result = await db.execute(
-        select(Lead).where(Lead.id.in_(request.lead_ids))
+        select(Lead).where(Lead.id.in_(request.lead_ids), Lead.account_id == account.id)
     )
     leads = leads_result.scalars().all()
 
@@ -333,8 +327,11 @@ async def get_lead_journey(
     lead_id: int,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Return all journey data for a lead: form, goals, actions, status history."""
+    await _get_owned_lead(lead_id, account, db)
+
     result = await db.execute(
         select(Lead).options(
             selectinload(Lead.status_history),

@@ -1,5 +1,6 @@
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import { AccountSwitcher } from './AccountSwitcher'
 
 export function Sidebar() {
   const navigate = useNavigate()
@@ -15,13 +16,14 @@ export function Sidebar() {
 
   return (
     <aside className="w-64 bg-slate-900 border-r border-slate-800 shadow-lg flex flex-col">
-      <div className="p-6 border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#0582BE] to-blue-600 flex items-center justify-center">
-            <span className="text-white font-bold text-lg">FS</span>
+      <div className="p-4 border-b border-slate-800">
+        <div className="flex items-center gap-3 px-1 mb-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0582BE] to-blue-600 flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-bold text-sm">UV</span>
           </div>
-          <h1 className="text-xl font-bold text-white">User Vision</h1>
+          <h1 className="text-base font-bold text-white">User Vision</h1>
         </div>
+        <AccountSwitcher />
       </div>
 
       <nav className="p-4 space-y-2 flex-1">

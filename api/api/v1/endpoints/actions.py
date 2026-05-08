@@ -6,8 +6,9 @@ from typing import List, Optional
 import logging
 
 from core.database import get_db
-from core.security import get_current_admin
+from core.security import get_current_admin, get_current_account
 from models.user import User
+from models.account import Account
 from models.action import Action, ActionLog
 from models.form import Form
 from models.lead import Lead
@@ -25,17 +26,53 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/actions", tags=["actions"])
 
 
+async def _get_owned_action(action_id: int, account: Account, db: AsyncSession) -> Action:
+    result = await db.execute(select(Action).where(Action.id == action_id))
+    action = result.scalars().first()
+    if not action:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action not found")
+    if action.account_id is not None and action.account_id != account.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return action
+
+
+async def _get_owned_form_for_action(form_id: int, account: Account, db: AsyncSession) -> Form:
+    result = await db.execute(
+        select(Form).options(selectinload(Form.actions)).where(Form.id == form_id)
+    )
+    form = result.scalars().first()
+    if not form:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    if form.account_id is not None and form.account_id != account.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return form
+
+
+async def _get_owned_lead_for_action(lead_id: int, account: Account, db: AsyncSession) -> Lead:
+    result = await db.execute(
+        select(Lead).options(selectinload(Lead.actions)).where(Lead.id == lead_id)
+    )
+    lead = result.scalars().first()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if lead.account_id is not None and lead.account_id != account.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return lead
+
+
 @router.post("", response_model=ActionResponse, status_code=status.HTTP_201_CREATED)
 async def create_action(
     action_data: ActionCreate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Create a new action (admin only)"""
     action = Action(
         name=action_data.name,
         description=action_data.description,
         webhook_url=action_data.webhook_url,
+        account_id=account.id,
     )
     db.add(action)
     await db.commit()
@@ -47,13 +84,13 @@ async def create_action(
 async def list_actions(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
-    """List all actions (admin only)"""
+    """List all actions for the active account (admin only)"""
     result = await db.execute(
-        select(Action).order_by(Action.created_at.desc())
+        select(Action).where(Action.account_id == account.id).order_by(Action.created_at.desc())
     )
-    actions = result.scalars().all()
-    return actions
+    return result.scalars().all()
 
 
 @router.get("/{action_id}", response_model=ActionResponse)
@@ -61,20 +98,10 @@ async def get_action(
     action_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get a specific action (admin only)"""
-    result = await db.execute(
-        select(Action).where(Action.id == action_id)
-    )
-    action = result.scalars().first()
-
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
-    return action
+    return await _get_owned_action(action_id, account, db)
 
 
 @router.put("/{action_id}", response_model=ActionResponse)
@@ -83,20 +110,11 @@ async def update_action(
     action_data: ActionUpdate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Update an action (admin only)"""
-    result = await db.execute(
-        select(Action).where(Action.id == action_id)
-    )
-    action = result.scalars().first()
+    action = await _get_owned_action(action_id, account, db)
 
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
-    # Update fields
     update_data = action_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(action, field, value)
@@ -111,19 +129,10 @@ async def delete_action(
     action_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Delete an action (admin only)"""
-    result = await db.execute(
-        select(Action).where(Action.id == action_id)
-    )
-    action = result.scalars().first()
-
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
+    action = await _get_owned_action(action_id, account, db)
     await db.delete(action)
     await db.commit()
 
@@ -135,40 +144,18 @@ async def add_action_to_form(
     action_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Add an action to a form (admin only)"""
-    # Verify form exists with eager-loaded actions
-    form_result = await db.execute(
-        select(Form).options(selectinload(Form.actions)).where(Form.id == form_id)
-    )
-    form = form_result.scalars().first()
+    form = await _get_owned_form_for_action(form_id, account, db)
+    action = await _get_owned_action(action_id, account, db)
 
-    if not form:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Form not found",
-        )
-
-    # Verify action exists
-    action_result = await db.execute(
-        select(Action).where(Action.id == action_id)
-    )
-    action = action_result.scalars().first()
-
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
-    # Check if already assigned
     if action in form.actions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Action already assigned to form",
         )
 
-    # Add action to form
     form.actions.append(action)
     await db.commit()
 
@@ -181,33 +168,12 @@ async def remove_action_from_form(
     action_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Remove an action from a form (admin only)"""
-    # Verify form exists with eager-loaded actions
-    form_result = await db.execute(
-        select(Form).options(selectinload(Form.actions)).where(Form.id == form_id)
-    )
-    form = form_result.scalars().first()
+    form = await _get_owned_form_for_action(form_id, account, db)
+    action = await _get_owned_action(action_id, account, db)
 
-    if not form:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Form not found",
-        )
-
-    # Verify action exists
-    action_result = await db.execute(
-        select(Action).where(Action.id == action_id)
-    )
-    action = action_result.scalars().first()
-
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
-    # Remove action from form
     if action in form.actions:
         form.actions.remove(action)
         await db.commit()
@@ -218,19 +184,10 @@ async def get_form_actions(
     form_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get all actions for a form (admin only)"""
-    result = await db.execute(
-        select(Form).options(selectinload(Form.actions)).where(Form.id == form_id)
-    )
-    form = result.scalars().first()
-
-    if not form:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Form not found",
-        )
-
+    form = await _get_owned_form_for_action(form_id, account, db)
     return form.actions
 
 
@@ -241,44 +198,21 @@ async def add_action_to_user(
     action_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Add an action to a user (admin only)"""
-    # Verify user exists with eager-loaded actions
-    user_result = await db.execute(
-        select(Lead).options(selectinload(Lead.actions)).where(Lead.id == user_id)
-    )
-    user = user_result.scalars().first()
+    user = await _get_owned_lead_for_action(user_id, account, db)
+    action = await _get_owned_action(action_id, account, db)
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    # Verify action exists
-    action_result = await db.execute(
-        select(Action).where(Action.id == action_id)
-    )
-    action = action_result.scalars().first()
-
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
-    # Check if already assigned
     if action in user.actions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Action already assigned to user",
         )
 
-    # Add action to user
     user.actions.append(action)
     await db.commit()
 
-    # If auto_send is enabled, trigger action immediately
     if action.auto_send:
         try:
             payload = {
@@ -313,23 +247,16 @@ async def bulk_assign_action_to_users(
     request: BulkAssignActionRequest,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Bulk assign an action to multiple users (admin only)"""
-    # Verify action exists
-    action_result = await db.execute(
-        select(Action).where(Action.id == request.action_id)
-    )
-    action = action_result.scalars().first()
+    action = await _get_owned_action(request.action_id, account, db)
 
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
-    # Fetch all users with eager-loaded actions
     user_result = await db.execute(
-        select(Lead).options(selectinload(Lead.actions)).where(Lead.id.in_(request.user_ids))
+        select(Lead).options(selectinload(Lead.actions)).where(
+            Lead.id.in_(request.user_ids),
+            Lead.account_id == account.id,
+        )
     )
     users = user_result.scalars().unique().all()
 
@@ -339,7 +266,6 @@ async def bulk_assign_action_to_users(
             detail="No users found with provided IDs",
         )
 
-    # Assign action to each user
     assigned_count = 0
     auto_sent_count = 0
 
@@ -350,7 +276,6 @@ async def bulk_assign_action_to_users(
 
     await db.commit()
 
-    # If auto_send is enabled, trigger action immediately for each user
     if action.auto_send:
         for user in users:
             if action in user.actions:
@@ -394,33 +319,12 @@ async def remove_action_from_user(
     action_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Remove an action from a user (admin only)"""
-    # Verify user exists with eager-loaded actions
-    user_result = await db.execute(
-        select(Lead).options(selectinload(Lead.actions)).where(Lead.id == user_id)
-    )
-    user = user_result.scalars().first()
+    user = await _get_owned_lead_for_action(user_id, account, db)
+    action = await _get_owned_action(action_id, account, db)
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    # Verify action exists
-    action_result = await db.execute(
-        select(Action).where(Action.id == action_id)
-    )
-    action = action_result.scalars().first()
-
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
-    # Remove action from user
     if action in user.actions:
         user.actions.remove(action)
         await db.commit()
@@ -431,19 +335,10 @@ async def get_user_actions(
     user_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get all actions for a user (admin only)"""
-    result = await db.execute(
-        select(Lead).options(selectinload(Lead.actions)).where(Lead.id == user_id)
-    )
-    user = result.scalars().first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
+    user = await _get_owned_lead_for_action(user_id, account, db)
     return user.actions
 
 
@@ -455,21 +350,11 @@ async def get_action_logs(
     success: Optional[bool] = Query(None, description="Filter by success status"),
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get logs for an action (admin only)"""
-    # Verify action exists
-    action_result = await db.execute(
-        select(Action).where(Action.id == action_id)
-    )
-    action = action_result.scalars().first()
+    await _get_owned_action(action_id, account, db)
 
-    if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
-
-    # Build query
     query = select(ActionLog).where(ActionLog.action_id == action_id)
 
     if user_id is not None:
@@ -493,21 +378,11 @@ async def get_user_action_logs(
     success: Optional[bool] = Query(None, description="Filter by success status"),
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get all action logs for a user (admin only)"""
-    # Verify user exists
-    user_result = await db.execute(
-        select(Lead).where(Lead.id == user_id)
-    )
-    user = user_result.scalars().first()
+    await _get_owned_lead_for_action(user_id, account, db)
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    # Build query
     query = select(ActionLog).where(ActionLog.user_id == user_id)
 
     if action_id is not None:

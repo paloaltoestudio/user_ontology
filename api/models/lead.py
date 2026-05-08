@@ -11,6 +11,7 @@ class Lead(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     form_id = Column(Integer, ForeignKey("forms.id"), nullable=False, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     # Static lead information fields
     name = Column(String(255), nullable=False, index=True)
     last_name = Column(String(255), nullable=False, index=True)

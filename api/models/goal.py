@@ -16,6 +16,7 @@ class Goal(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Admin user who created it
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Relationships
     completions = relationship("GoalCompletion", back_populates="goal", cascade="all, delete-orphan")

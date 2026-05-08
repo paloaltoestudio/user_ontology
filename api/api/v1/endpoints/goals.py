@@ -6,8 +6,9 @@ from typing import List, Optional
 import logging
 
 from core.database import get_db
-from core.security import get_current_admin
+from core.security import get_current_admin, get_current_account
 from models.user import User
+from models.account import Account
 from models.goal import Goal, GoalCompletion, GoalAssignment
 from models.lead import Lead
 from schemas.goal import (
@@ -34,6 +35,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/goals", tags=["goals"])
 
 
+async def _get_owned_goal(goal_id: int, account: Account, db: AsyncSession) -> Goal:
+    result = await db.execute(select(Goal).where(Goal.id == goal_id))
+    goal = result.scalars().first()
+    if not goal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+    if goal.account_id is not None and goal.account_id != account.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return goal
+
+
+async def _get_owned_lead_for_goal(lead_id: int, account: Account, db: AsyncSession) -> Lead:
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalars().first()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if lead.account_id is not None and lead.account_id != account.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return lead
+
+
 # ============================================================================
 # Admin Endpoints - Goal CRUD
 # ============================================================================
@@ -43,6 +64,7 @@ async def create_goal(
     goal_data: GoalCreate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Create a new goal (admin only)"""
     goal = Goal(
@@ -50,6 +72,7 @@ async def create_goal(
         description=goal_data.description,
         is_active=goal_data.is_active,
         created_by=admin_user.id,
+        account_id=account.id,
     )
     db.add(goal)
     await db.commit()
@@ -63,17 +86,17 @@ async def list_goals(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
-    """List all goals (admin only)"""
-    query = select(Goal)
+    """List all goals for the active account (admin only)"""
+    query = select(Goal).where(Goal.account_id == account.id)
 
     if is_active is not None:
         query = query.where(Goal.is_active == is_active)
 
     query = query.order_by(Goal.created_at.desc())
     result = await db.execute(query)
-    goals = result.scalars().all()
-    return goals
+    return result.scalars().all()
 
 
 @router.get("/{goal_id}", response_model=GoalResponse)
@@ -81,20 +104,10 @@ async def get_goal(
     goal_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get goal details (admin only)"""
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id)
-    )
-    goal = result.scalars().first()
-
-    if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Goal not found",
-        )
-
-    return goal
+    return await _get_owned_goal(goal_id, account, db)
 
 
 @router.put("/{goal_id}", response_model=GoalResponse)
@@ -103,18 +116,12 @@ async def update_goal(
     goal_data: GoalUpdate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Update a goal (admin only)"""
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id)
-    )
-    goal = result.scalars().first()
-
+    goal = await _get_owned_goal(goal_id, account, db)
     if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Goal not found",
-        )
+        pass  # _get_owned_goal raises HTTPException
 
     # Update fields
     update_data = goal_data.model_dump(exclude_unset=True)
@@ -132,19 +139,10 @@ async def deactivate_goal(
     goal_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Deactivate a goal (soft delete) (admin only)"""
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id)
-    )
-    goal = result.scalars().first()
-
-    if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Goal not found",
-        )
-
+    goal = await _get_owned_goal(goal_id, account, db)
     goal.is_active = False
     await db.commit()
     logger.info(f"Goal deactivated: id={goal.id}, deactivated_by={admin_user.id}")
@@ -160,19 +158,10 @@ async def get_goal_completions(
     goal_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get all completions for a goal (admin only)"""
-    # Verify goal exists
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id)
-    )
-    goal = result.scalars().first()
-
-    if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Goal not found",
-        )
+    await _get_owned_goal(goal_id, account, db)
 
     # Get completions
     result = await db.execute(
@@ -189,19 +178,10 @@ async def get_user_goal_completions(
     user_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get all goal completions for a user (admin only)"""
-    # Verify user exists
-    result = await db.execute(
-        select(Lead).where(Lead.id == user_id)
-    )
-    user = result.scalars().first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    await _get_owned_lead_for_goal(user_id, account, db)
 
     # Get completions
     result = await db.execute(
@@ -223,31 +203,11 @@ async def assign_goal_to_user(
     request: GoalAssignmentCreate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Assign a goal to a single user (admin only)"""
-    # Verify goal exists
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id)
-    )
-    goal = result.scalars().first()
-
-    if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Goal not found",
-        )
-
-    # Verify user exists
-    result = await db.execute(
-        select(Lead).where(Lead.id == request.user_id)
-    )
-    user = result.scalars().first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    await _get_owned_goal(goal_id, account, db)
+    await _get_owned_lead_for_goal(request.user_id, account, db)
 
     # Check if assignment already exists
     result = await db.execute(
@@ -286,23 +246,14 @@ async def assign_goal_to_users_bulk(
     request: GoalAssignmentBulkCreate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Assign a goal to multiple users in bulk (admin only)"""
-    # Verify goal exists
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id)
-    )
-    goal = result.scalars().first()
+    await _get_owned_goal(goal_id, account, db)
 
-    if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Goal not found",
-        )
-
-    # Verify all users exist
+    # Verify all users exist and belong to the account
     result = await db.execute(
-        select(Lead).where(Lead.id.in_(request.user_ids))
+        select(Lead).where(Lead.id.in_(request.user_ids), Lead.account_id == account.id)
     )
     existing_users = result.scalars().all()
     existing_user_ids = {u.id for u in existing_users}
@@ -370,19 +321,10 @@ async def get_goal_assignments(
     goal_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get all assignments for a goal (admin only)"""
-    # Verify goal exists
-    result = await db.execute(
-        select(Goal).where(Goal.id == goal_id)
-    )
-    goal = result.scalars().first()
-
-    if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Goal not found",
-        )
+    await _get_owned_goal(goal_id, account, db)
 
     # Get assignments with eager loading of goal
     result = await db.execute(
@@ -400,19 +342,10 @@ async def get_user_goal_assignments(
     user_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Get all goal assignments for a user (admin only)"""
-    # Verify user exists
-    result = await db.execute(
-        select(Lead).where(Lead.id == user_id)
-    )
-    user = result.scalars().first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    await _get_owned_lead_for_goal(user_id, account, db)
 
     # Get assignments with eager loading of goal
     result = await db.execute(
@@ -431,8 +364,10 @@ async def remove_goal_assignment(
     assignment_id: int,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
+    account: Account = Depends(get_current_account),
 ):
     """Remove a goal assignment (admin only)"""
+    await _get_owned_goal(goal_id, account, db)
     result = await db.execute(
         select(GoalAssignment).where(
             and_(

@@ -53,6 +53,7 @@ async def _process_submission(
     mapping: Dict[str, str],
     form_id: int,
     db: AsyncSession,
+    account_id: Optional[int] = None,
 ) -> bool:
     """
     Try to turn a raw ExternalSubmission into a Lead using the given mapping.
@@ -68,6 +69,7 @@ async def _process_submission(
 
     lead = Lead(
         form_id=form_id,
+        account_id=account_id,
         name=extracted.get("name", ""),
         last_name=extracted.get("last_name", ""),
         email=str(email),
@@ -93,6 +95,7 @@ async def _run_forward_reprocess(
     after_id: int,
     mapping: Dict[str, str],
     db: AsyncSession,
+    account_id: Optional[int] = None,
 ) -> ProcessResult:
     """
     Process all pending/failed submissions with id > after_id in chronological order.
@@ -111,7 +114,7 @@ async def _run_forward_reprocess(
     stopped_at: Optional[int] = None
 
     for submission in queue:
-        success = await _process_submission(submission, mapping, form_id, db)
+        success = await _process_submission(submission, mapping, form_id, db, account_id=account_id)
         if success:
             processed += 1
         else:
@@ -187,7 +190,7 @@ async def receive_external_submission(
 
     # If mapping is already configured, try to process immediately
     if form.external_field_mapping:
-        await _process_submission(submission, form.external_field_mapping, form.id, db)
+        await _process_submission(submission, form.external_field_mapping, form.id, db, account_id=form.account_id)
 
     await db.commit()
     return {"received": True}
@@ -289,7 +292,7 @@ async def map_and_process(
     await db.flush()
 
     # Process the selected submission first
-    success = await _process_submission(submission, data.mapping, form_id, db)
+    success = await _process_submission(submission, data.mapping, form_id, db, account_id=form.account_id)
 
     if not success:
         # The selected submission itself failed — just report, no further processing
@@ -308,7 +311,7 @@ async def map_and_process(
         )
 
     # Forward-reprocess all pending/failed with id > submission_id
-    result = await _run_forward_reprocess(form_id, submission_id, data.mapping, db)
+    result = await _run_forward_reprocess(form_id, submission_id, data.mapping, db, account_id=form.account_id)
     result.processed += 1  # include the selected submission itself
     await db.commit()
     return result
@@ -349,7 +352,7 @@ async def reprocess_external_submissions(
         return ProcessResult(processed=0, stopped_at=None, remaining_pending=0, message="No pending submissions to reprocess.")
 
     # Process the first one, then forward-reprocess the rest
-    success = await _process_submission(first, form.external_field_mapping, form_id, db)
+    success = await _process_submission(first, form.external_field_mapping, form_id, db, account_id=form.account_id)
 
     if not success:
         await db.commit()
@@ -366,7 +369,7 @@ async def reprocess_external_submissions(
             message=f"First submission #{first.id} failed — mapping may be broken. {remaining} submissions still pending.",
         )
 
-    result = await _run_forward_reprocess(form_id, first.id, form.external_field_mapping, db)
+    result = await _run_forward_reprocess(form_id, first.id, form.external_field_mapping, db, account_id=form.account_id)
     result.processed += 1
     await db.commit()
     return result

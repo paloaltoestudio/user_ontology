@@ -123,3 +123,36 @@ async def get_current_admin(user=Depends(get_current_user)):
             detail="Only administrators can access this resource",
         )
     return user
+
+
+async def get_current_account(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns the admin's active Account. Raises 403 with detail='no_account' if none set."""
+    from models.account import Account, Membership
+
+    if not current_user.last_active_account_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="no_account")
+
+    if current_user.is_superadmin:
+        result = await db.execute(
+            select(Account).where(Account.id == current_user.last_active_account_id)
+        )
+        account = result.scalars().first()
+        if not account:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="no_account")
+        return account
+
+    result = await db.execute(
+        select(Account)
+        .join(Membership, Membership.account_id == Account.id)
+        .where(
+            Account.id == current_user.last_active_account_id,
+            Membership.user_id == current_user.id,
+        )
+    )
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="no_account")
+    return account
