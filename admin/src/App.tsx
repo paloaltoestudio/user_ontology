@@ -13,6 +13,7 @@ import { UserOntologySummaryPage } from './pages/UserOntologySummaryPage'
 import { UserDetailPageTabbed } from './pages/UserDetailPageTabbed'
 import { UserSuggestionsInboxPage } from './pages/UserSuggestionsInboxPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { CatalogPage } from './pages/CatalogPage'
 import { CreateAccountPage } from './pages/CreateAccountPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { ToastProvider, ToastContainer } from './components/Toast/ToastContainer'
@@ -127,6 +128,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/catalog"
+            element={
+              <ProtectedRoute>
+                <CatalogPage />
               </ProtectedRoute>
             }
           />

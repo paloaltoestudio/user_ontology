@@ -8,40 +8,18 @@ import { UserFilters, type FilterState } from '../components/UserFilters'
 import { leadsApi } from '../api/leads'
 import { actionsApi } from '../api/actions'
 import { goalsApi } from '../api/goals'
-import { Action } from '../types/action'
-import { Goal } from '../types/goal'
-
-type LeadStatus = 'new' | 'contacted' | 'qualified' | 'activated' | 'inactive' | 'churned'
-type FilterStatus = LeadStatus | 'all'
-
-interface Lead {
-  id: number
-  form_id: number
-  email: string
-  name?: string
-  last_name?: string
-  phone?: string
-  company?: string
-  company_url?: string
-  status: LeadStatus
-  form_data: Record<string, any>
-  notes: string | null
-  webhook_deliveries: any[]
-  created_at: string
-  updated_at: string
-}
 
 export function UserOntologySummaryPage() {
   const navigate = useNavigate()
   const { success: showSuccess, error: showError } = useToast()
-  const [selectedFilter, setSelectedFilter] = useState<FilterStatus>('all')
+  const [selectedFilter, setSelectedFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const selectAllCheckboxRef = useRef<HTMLInputElement>(null)
   const [selectedAction, setSelectedAction] = useState<number | null>(null)
   const [isApplyingAction, setIsApplyingAction] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [advancedFilters, setAdvancedFilters] = useState<FilterState>({})
+  const [, setAdvancedFilters] = useState<FilterState>({})
   const [selectedGoal, setSelectedGoal] = useState<number | null>(null)
   const [isAssigningGoal, setIsAssigningGoal] = useState(false)
   const [showGoalConfirmModal, setShowGoalConfirmModal] = useState(false)
@@ -72,19 +50,16 @@ export function UserOntologySummaryPage() {
   // Calculate metrics
   const metrics = useMemo(() => {
     const total = leads.length
-    const activated = leads.filter((u) => u.status === 'activated').length
-    const inProgress = leads.filter((u) => u.status === 'contacted' || u.status === 'qualified').length
-    const inactive = leads.filter((u) => u.status === 'inactive').length
-    const churned = leads.filter((u) => u.status === 'churned').length
+    const withStage = leads.filter((u) => u.stage).length
+    const noStage = total - withStage
 
-    return {
-      total,
-      activated,
-      inProgress,
-      inactive,
-      churned,
-      activationRate: total > 0 ? Math.round((activated / total) * 100) : 0,
-    }
+    return { total, withStage, noStage }
+  }, [leads])
+
+  // Unique stages from loaded leads (for filter dropdown)
+  const uniqueStages = useMemo(() => {
+    const stages = leads.map((l) => l.stage).filter((s): s is string => !!s)
+    return Array.from(new Set(stages)).sort()
   }, [leads])
 
   // Filter and search leads
@@ -92,7 +67,8 @@ export function UserOntologySummaryPage() {
     return leads
       .filter((lead) => {
         if (selectedFilter === 'all') return true
-        return lead.status === selectedFilter
+        if (selectedFilter === '__no_stage__') return !lead.stage
+        return lead.stage === selectedFilter
       })
       .filter((lead) => {
         const searchLower = searchQuery.toLowerCase()
@@ -125,7 +101,6 @@ export function UserOntologySummaryPage() {
   }
 
   const isAllSelected = filteredUsers.length > 0 && selectedIds.size === filteredUsers.length
-  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredUsers.length
 
   const handleApplyAction = async () => {
     if (!selectedAction || selectedIds.size === 0) return
@@ -174,17 +149,7 @@ export function UserOntologySummaryPage() {
     }
   }
 
-  const getStatusColor = (status: LeadStatus) => {
-    const colors: Record<LeadStatus, { bg: string; text: string; badge: string }> = {
-      new: { bg: 'bg-amber-500/10', text: 'text-amber-300', badge: 'bg-amber-500/20' },
-      contacted: { bg: 'bg-blue-500/10', text: 'text-blue-300', badge: 'bg-blue-500/20' },
-      qualified: { bg: 'bg-purple-500/10', text: 'text-purple-300', badge: 'bg-purple-500/20' },
-      activated: { bg: 'bg-emerald-500/10', text: 'text-emerald-300', badge: 'bg-emerald-500/20' },
-      inactive: { bg: 'bg-slate-500/10', text: 'text-slate-300', badge: 'bg-slate-500/20' },
-      churned: { bg: 'bg-red-500/10', text: 'text-red-300', badge: 'bg-red-500/20' },
-    }
-    return colors[status]
-  }
+  const getStageBadgeClass = () => 'bg-slate-700/50 text-slate-300'
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -198,15 +163,6 @@ export function UserOntologySummaryPage() {
     return `${Math.floor(daysDiff / 30)} months ago`
   }
 
-  const statusLabels: Record<FilterStatus, string> = {
-    all: 'All Leads',
-    new: 'New',
-    contacted: 'Contacted',
-    qualified: 'Qualified',
-    activated: 'Activated',
-    inactive: 'Inactive',
-    churned: 'Churned',
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
@@ -235,39 +191,39 @@ export function UserOntologySummaryPage() {
                 {!isLoading && (
                   <>
                 {/* Metrics Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                  <MetricCard
-                    label="Total Users"
-                    value={metrics.total}
-                    icon="users"
-                    color="blue"
-                  />
-                  <MetricCard
-                    label="Activated"
-                    value={metrics.activated}
-                    subtext={`${metrics.activationRate}% rate`}
-                    icon="check-circle"
-                    color="emerald"
-                  />
-                  <MetricCard
-                    label="In Progress"
-                    value={metrics.inProgress}
-                    icon="clock"
-                    color="blue"
-                  />
-                  <MetricCard
-                    label="Inactive"
-                    value={metrics.inactive}
-                    icon="slash"
-                    color="slate"
-                  />
-                  <MetricCard
-                    label="Churned"
-                    value={metrics.churned}
-                    icon="trending-down"
-                    color="red"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <MetricCard label="Total Leads" value={metrics.total} icon="users" color="blue" />
+                  <MetricCard label="With Stage" value={metrics.withStage} icon="tag" color="emerald" />
+                  <MetricCard label="No Stage" value={metrics.noStage} icon="circle" color="slate" />
                 </div>
+
+                {/* Stage Filter */}
+                {uniqueStages.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-slate-400 font-medium">Filter by stage:</span>
+                    <button
+                      onClick={() => setSelectedFilter('all')}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition ${selectedFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'}`}
+                    >
+                      All
+                    </button>
+                    {uniqueStages.map((stage) => (
+                      <button
+                        key={stage}
+                        onClick={() => setSelectedFilter(stage)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition ${selectedFilter === stage ? 'bg-blue-600 text-white' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'}`}
+                      >
+                        {stage}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setSelectedFilter('__no_stage__')}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition ${selectedFilter === '__no_stage__' ? 'bg-slate-600 text-white' : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'}`}
+                    >
+                      No stage
+                    </button>
+                  </div>
+                )}
 
                 {/* Filters and Search - Integrated */}
                 <UserFilters
@@ -375,10 +331,7 @@ export function UserOntologySummaryPage() {
                               Company
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                              Status
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                              Activation
+                              Stage
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wide">
                               Last Active
@@ -418,22 +371,13 @@ export function UserOntologySummaryPage() {
                                 <p className="text-sm text-slate-300">{lead.company || '—'}</p>
                               </td>
                               <td className="px-6 py-4">
-                                <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(lead.status).badge}`}>
-                                  <span className={getStatusColor(lead.status).text}>
-                                    {statusLabels[lead.status as FilterStatus]}
+                                {lead.stage ? (
+                                  <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getStageBadgeClass()}`}>
+                                    {lead.stage}
                                   </span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-24 h-2 bg-slate-700/50 rounded-full overflow-hidden">
-                                    <div
-                                      className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full"
-                                      style={{ width: `${lead.status === 'activated' ? 100 : 0}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-xs text-slate-400">{lead.status === 'activated' ? 100 : 0}%</span>
-                                </div>
+                                ) : (
+                                  <span className="text-slate-500 text-xs">—</span>
+                                )}
                               </td>
                               <td className="px-6 py-4">
                                 <p className="text-sm text-slate-400">{formatDate(lead.updated_at)}</p>

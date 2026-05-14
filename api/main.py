@@ -8,7 +8,7 @@ from core.database import engine
 logger = logging.getLogger(__name__)
 
 # Import all models to register them
-from models import user, scoring_rule, event_log, form, lead, action, goal, external_submission, account
+from models import user, scoring_rule, event_log, form, lead, action, goal, external_submission, account, lead_primitives, catalog
 from models.lead import WebhookDelivery  # Explicitly import to register the model
 from models.action import ActionLog  # Explicitly import to register the model
 from models.goal import Goal, GoalCompletion, GoalAssignment, IdempotencyKey  # Explicitly import to register the models
@@ -47,7 +47,7 @@ async def root():
 
 
 # Import and include routers from endpoints
-from api.v1.endpoints import auth, users, flows, scoring, webhooks, forms, leads, actions, goals, settings, inbound, accounts
+from api.v1.endpoints import auth, users, flows, scoring, webhooks, forms, leads, actions, goals, settings, inbound, accounts, lead_primitives, catalog
 from mcp_server import router as mcp_router, log_mcp_startup
 
 app.include_router(auth.router, prefix="/api/v1")
@@ -62,6 +62,8 @@ app.include_router(goals.router, prefix="/api/v1")
 app.include_router(settings.router, prefix="/api/v1")
 app.include_router(inbound.router, prefix="/api/v1")
 app.include_router(accounts.router, prefix="/api/v1")
+app.include_router(lead_primitives.router, prefix="/api/v1")
+app.include_router(catalog.router, prefix="/api/v1")
 
 # Include MCP router (integrated into main app on same port)
 app.include_router(mcp_router)

@@ -88,6 +88,16 @@ export function Sidebar() {
         >
           Goals
         </Link>
+        <Link
+          to="/catalog"
+          className={`block px-4 py-3 rounded-lg font-medium transition ${
+            isActive('/catalog')
+              ? 'bg-gradient-to-r from-[#0582BE] to-blue-600 text-white'
+              : 'text-slate-300 hover:bg-slate-800'
+          }`}
+        >
+          Catalog
+        </Link>
       </nav>
 
       <div className="p-4 border-t border-slate-800 space-y-2">

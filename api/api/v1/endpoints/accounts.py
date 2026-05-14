@@ -117,9 +117,8 @@ async def create_account(
     )
     db.add(membership)
 
-    # Set as last active if user has none
-    if current_user.last_active_account_id is None:
-        current_user.last_active_account_id = account.id
+    # Always switch to the newly created account
+    current_user.last_active_account_id = account.id
 
     await db.commit()
     await db.refresh(account)

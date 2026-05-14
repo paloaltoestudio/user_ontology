@@ -15,15 +15,15 @@ class Lead(Base):
     # Static lead information fields
     name = Column(String(255), nullable=False, index=True)
     last_name = Column(String(255), nullable=False, index=True)
-    email = Column(String(255), index=True, nullable=False)  # Required static field
+    email = Column(String(255), index=True, nullable=False)
     phone = Column(String(50), nullable=True)
     company = Column(String(255), nullable=True)
     company_url = Column(String(2048), nullable=True)
-    # Form tracking
-    status = Column(String(50), default="new", nullable=False, index=True)  # new, contacted, qualified, etc.
-    entry_source = Column(String(50), default="form", nullable=False)  # form, manual, api, csv
-    form_data = Column(JSON, nullable=False)  # All submitted field values
-    notes = Column(String(2000), nullable=True)  # Admin notes about the lead
+    # Lifecycle tracking
+    stage = Column(String(255), nullable=True, index=True)  # free-form label, no enum constraint
+    entry_source = Column(String(50), default="form", nullable=False)
+    form_data = Column(JSON, nullable=False)
+    notes = Column(String(2000), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -31,30 +31,32 @@ class Lead(Base):
     form = relationship("Form")
     webhook_deliveries = relationship("WebhookDelivery", back_populates="lead", cascade="all, delete-orphan")
     actions = relationship("Action", secondary="user_actions", back_populates="users")
-
-    status_history = relationship("LeadStatusHistory", back_populates="lead", cascade="all, delete-orphan", order_by="LeadStatusHistory.created_at")
+    stage_history = relationship("LeadStageHistory", back_populates="lead", cascade="all, delete-orphan", order_by="LeadStageHistory.created_at")
+    events = relationship("LeadEvent", back_populates="lead", cascade="all, delete-orphan", order_by="LeadEvent.created_at")
+    properties = relationship("LeadProperty", back_populates="lead", cascade="all, delete-orphan")
+    tags = relationship("LeadTag", back_populates="lead", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
-        return f"<Lead(id={self.id}, form_id={self.form_id}, email={self.email}, status={self.status})>"
+        return f"<Lead(id={self.id}, form_id={self.form_id}, email={self.email}, stage={self.stage})>"
 
 
-class LeadStatusHistory(Base):
-    """Track status changes for a lead over time"""
+class LeadStageHistory(Base):
+    """Track stage changes for a lead over time"""
 
-    __tablename__ = "lead_status_history"
+    __tablename__ = "lead_stage_history"
 
     id = Column(Integer, primary_key=True, index=True)
     lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
-    from_status = Column(String(50), nullable=True)
-    to_status = Column(String(50), nullable=False)
+    from_stage = Column(String(255), nullable=True)
+    to_stage = Column(String(255), nullable=False)
     changed_by = Column(String(255), nullable=True)
     note = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
-    lead = relationship("Lead", back_populates="status_history")
+    lead = relationship("Lead", back_populates="stage_history")
 
     def __repr__(self) -> str:
-        return f"<LeadStatusHistory(lead_id={self.lead_id}, {self.from_status}→{self.to_status})>"
+        return f"<LeadStageHistory(lead_id={self.lead_id}, {self.from_stage}→{self.to_stage})>"
 
 
 class WebhookDelivery(Base):
@@ -66,11 +68,10 @@ class WebhookDelivery(Base):
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
     webhook_url = Column(String(2000), nullable=False)
     success = Column(Boolean, default=False, nullable=False, index=True)
-    error_message = Column(String(1000), nullable=True)  # Error details if failed
-    response_status = Column(Integer, nullable=True)  # HTTP status code from webhook
+    error_message = Column(String(1000), nullable=True)
+    response_status = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
-    # Relationships
     lead = relationship("Lead", back_populates="webhook_deliveries")
 
     def __repr__(self) -> str:

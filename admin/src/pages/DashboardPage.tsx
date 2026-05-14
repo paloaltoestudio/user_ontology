@@ -31,33 +31,38 @@ export function DashboardPage() {
   useEffect(() => {
     if (!stats) return
 
-    const { by_status, total } = stats
+    const { by_stage } = stats
     const spacing = 320
     const startX = 80
 
-    const newNodes = by_status.map((s, i) => {
+    const newNodes = by_stage.map((s, i) => {
       const color = PALETTE[i % PALETTE.length]
+      const label = s.stage ?? '(no stage)'
       return {
-        id: s.status,
+        id: label,
         type: 'custom',
         position: { x: startX + i * spacing, y: 250 },
         data: {
-          label: s.status,
+          label,
           count: s.count,
           percentage: s.percentage,
-          stage: s.status,
+          stage: label,
           color,
         },
       }
     })
 
-    const newEdges = by_status.slice(0, -1).map((s, i) => ({
-      id: `e-${s.status}-${by_status[i + 1].status}`,
-      source: s.status,
-      target: by_status[i + 1].status,
-      animated: true,
-      style: { stroke: EDGE_COLORS[i % EDGE_COLORS.length], strokeWidth: 2 },
-    }))
+    const newEdges = by_stage.slice(0, -1).map((s, i) => {
+      const from = s.stage ?? '(no stage)'
+      const to = by_stage[i + 1].stage ?? '(no stage)'
+      return {
+        id: `e-${from}-${to}`,
+        source: from,
+        target: to,
+        animated: true,
+        style: { stroke: EDGE_COLORS[i % EDGE_COLORS.length], strokeWidth: 2 },
+      }
+    })
 
     setNodes(newNodes)
     setEdges(newEdges)
@@ -81,17 +86,18 @@ export function DashboardPage() {
                   <p className="text-2xl font-bold text-white mt-2">{stats?.total.toLocaleString()}</p>
                 </div>
 
-                {/* Per-status cards */}
-                {stats?.by_status.map((s, i) => {
+                {/* Per-stage cards */}
+                {stats?.by_stage.map((s, i) => {
                   const color = PALETTE[i % PALETTE.length]
+                  const label = s.stage ?? '(no stage)'
                   return (
                     <div
-                      key={s.status}
+                      key={label}
                       className="p-4 rounded-xl border border-slate-700/50 backdrop-blur-sm"
                       style={{ background: `linear-gradient(135deg, ${color.bg}30 0%, ${color.bg}10 100%)` }}
                     >
                       <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: color.text }}>
-                        {s.status}
+                        {label}
                       </p>
                       <p className="text-2xl font-bold text-white mt-2">{s.count.toLocaleString()}</p>
                       <p className="text-xs text-slate-400 mt-1">{s.percentage}% of total</p>
@@ -121,12 +127,13 @@ export function DashboardPage() {
             {!isLoading && stats && (
               <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-800/80 backdrop-blur-sm rounded-lg border border-slate-700/50 p-4">
                 <div className="flex items-center gap-6 flex-wrap">
-                  {stats.by_status.map((s, i) => {
+                  {stats.by_stage.map((s, i) => {
                     const color = PALETTE[i % PALETTE.length]
+                    const label = s.stage ?? '(no stage)'
                     return (
-                      <div key={s.status} className="flex items-center gap-2 text-xs">
+                      <div key={label} className="flex items-center gap-2 text-xs">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color.border }} />
-                        <span className="text-slate-300 capitalize">{s.status}</span>
+                        <span className="text-slate-300 capitalize">{label}</span>
                       </div>
                     )
                   })}

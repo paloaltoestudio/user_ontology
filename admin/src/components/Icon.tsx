@@ -1,5 +1,5 @@
 interface IconProps {
-  type: 'file' | 'checkbox' | 'form' | 'copy' | 'users' | 'check-circle' | 'clock' | 'slash' | 'trending-down' | 'search' | 'target' | 'info' | 'activity' | 'log-in' | 'file-text' | 'user' | 'zap' | 'circle' | 'lightbulb' | 'user-plus' | 'x-circle' | 'minus-circle' | 'filter' | 'chevron-up' | 'chevron-down' | 'x' | 'trash-2'
+  type: 'file' | 'checkbox' | 'form' | 'copy' | 'users' | 'check-circle' | 'clock' | 'slash' | 'trending-down' | 'search' | 'target' | 'info' | 'activity' | 'log-in' | 'file-text' | 'user' | 'zap' | 'circle' | 'lightbulb' | 'user-plus' | 'x-circle' | 'minus-circle' | 'filter' | 'chevron-up' | 'chevron-down' | 'x' | 'trash-2' | 'flag' | 'tag' | 'sliders' | 'edit-2' | 'plus' | 'sticky-note'
   size?: number
   color?: string
   className?: string
@@ -177,6 +177,48 @@ export function Icon({ type, size = 1, color = 'currentColor', className = '' }:
         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
         <line x1="10" y1="11" x2="10" y2="17" />
         <line x1="14" y1="11" x2="14" y2="17" />
+      </svg>
+    ),
+    flag: (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+        <line x1="4" y1="22" x2="4" y2="15" />
+      </svg>
+    ),
+    tag: (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+        <line x1="7" y1="7" x2="7.01" y2="7" />
+      </svg>
+    ),
+    sliders: (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <line x1="4" y1="21" x2="4" y2="14" />
+        <line x1="4" y1="10" x2="4" y2="3" />
+        <line x1="12" y1="21" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12" y2="3" />
+        <line x1="20" y1="21" x2="20" y2="16" />
+        <line x1="20" y1="12" x2="20" y2="3" />
+        <line x1="1" y1="14" x2="7" y2="14" />
+        <line x1="9" y1="8" x2="15" y2="8" />
+        <line x1="17" y1="16" x2="23" y2="16" />
+      </svg>
+    ),
+    'edit-2': (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+      </svg>
+    ),
+    plus: (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+    ),
+    'sticky-note': (
+      <svg viewBox="0 0 24 24" width={dimensions} height={dimensions} fill="none" stroke={color} strokeWidth="1.5" className={className}>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h7l5-5V4a2 2 0 0 0-2-2z" />
+        <polyline points="14 2 14 8 20 8" />
       </svg>
     ),
   }

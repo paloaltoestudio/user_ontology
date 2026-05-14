@@ -11,7 +11,7 @@ from core.security import get_current_admin, get_current_account
 from models.user import User
 from models.account import Account
 from models.form import Form
-from models.lead import Lead, LeadStatusHistory, WebhookDelivery
+from models.lead import Lead, LeadStageHistory, WebhookDelivery
 from models.action import Action, ActionLog
 from models.goal import Goal, GoalCompletion, GoalAssignment
 from models.form import Form
@@ -42,7 +42,6 @@ async def send_webhooks(lead_id: int, form_id: int, form_data: dict, webhook_url
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     response = await client.post(webhook_url, json=form_data)
 
-                    # Log successful delivery
                     delivery = WebhookDelivery(
                         lead_id=lead_id,
                         webhook_url=webhook_url,
@@ -51,7 +50,6 @@ async def send_webhooks(lead_id: int, form_id: int, form_data: dict, webhook_url
                     )
                     db.add(delivery)
             except Exception as e:
-                # Log failed delivery
                 delivery = WebhookDelivery(
                     lead_id=lead_id,
                     webhook_url=webhook_url,
@@ -86,19 +84,12 @@ async def submit_form(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a form and create a lead (public endpoint - no auth required)"""
-    # Verify form exists and get webhooks
-    result = await db.execute(
-        select(Form).where(Form.id == form_id)
-    )
+    result = await db.execute(select(Form).where(Form.id == form_id))
     form = result.scalars().first()
 
     if not form:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Form not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
 
-    # Create lead with static fields; inherit account from the form
     lead = Lead(
         form_id=form_id,
         account_id=form.account_id,
@@ -109,14 +100,13 @@ async def submit_form(
         company=lead_data.company,
         company_url=lead_data.company_url,
         form_data=lead_data.form_data,
-        status="new",
+        stage=None,
     )
     db.add(lead)
-    await db.flush()  # Get the lead ID without committing
+    await db.flush()
     lead_id = lead.id
     await db.commit()
 
-    # Send webhooks in background (non-blocking)
     if form.webhooks:
         background_tasks.add_task(
             send_webhooks,
@@ -126,7 +116,6 @@ async def submit_form(
             webhook_urls=form.webhooks
         )
 
-    # Trigger form actions in background (non-blocking)
     background_tasks.add_task(
         trigger_actions_for_form,
         lead_id=lead_id,
@@ -134,7 +123,6 @@ async def submit_form(
         form_data=lead_data.form_data,
     )
 
-    # Refresh to get latest data and eager load relationships
     result = await db.execute(
         select(Lead).options(selectinload(Lead.webhook_deliveries)).where(Lead.id == lead_id)
     )
@@ -144,7 +132,7 @@ async def submit_form(
 @router.get("", response_model=list[LeadResponse])
 async def list_leads(
     form_id: Optional[int] = Query(None, description="Filter by form ID"),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    stage: Optional[str] = Query(None, description="Filter by stage"),
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
     account: Account = Depends(get_current_account),
@@ -155,8 +143,8 @@ async def list_leads(
     filters = [Lead.account_id == account.id]
     if form_id:
         filters.append(Lead.form_id == form_id)
-    if status:
-        filters.append(Lead.status == status)
+    if stage:
+        filters.append(Lead.stage == stage)
 
     query = query.where(and_(*filters)).order_by(Lead.created_at.desc())
 
@@ -170,25 +158,25 @@ async def get_lead_stats(
     _: User = Depends(get_current_admin),
     account: Account = Depends(get_current_account),
 ):
-    """Return total lead count and breakdown by status for the active account."""
+    """Return total lead count and breakdown by stage for the active account."""
     rows = await db.execute(
-        select(Lead.status, func.count(Lead.id))
+        select(Lead.stage, func.count(Lead.id))
         .where(Lead.account_id == account.id)
-        .group_by(Lead.status)
+        .group_by(Lead.stage)
     )
     counts = rows.all()
 
     total = sum(c for _, c in counts)
-    by_status = [
+    by_stage = [
         {
-            "status": s,
+            "stage": s,
             "count": count,
             "percentage": round(count / total * 100, 1) if total else 0,
         }
         for s, count in sorted(counts, key=lambda x: x[1], reverse=True)
     ]
 
-    return {"total": total, "by_status": by_status}
+    return {"total": total, "by_stage": by_stage}
 
 
 @router.get("/{lead_id}", response_model=LeadResponse)
@@ -215,21 +203,16 @@ async def update_lead(
     admin_user: User = Depends(get_current_admin),
     account: Account = Depends(get_current_account),
 ):
-    """Update lead status and notes (admin only)"""
+    """Update lead stage and notes (admin only)"""
     lead = await _get_owned_lead(lead_id, account, db)
-    if not lead:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lead not found",
-        )
 
     update_data = lead_data.model_dump(exclude_unset=True)
 
-    if "status" in update_data and update_data["status"] != lead.status:
-        db.add(LeadStatusHistory(
+    if "stage" in update_data and update_data["stage"] != lead.stage:
+        db.add(LeadStageHistory(
             lead_id=lead.id,
-            from_status=lead.status,
-            to_status=update_data["status"],
+            from_stage=lead.stage,
+            to_stage=update_data["stage"],
             changed_by=admin_user.email,
         ))
 
@@ -263,31 +246,20 @@ async def apply_action_to_leads(
     account: Account = Depends(get_current_account),
 ):
     """Apply an action to multiple leads (admin only)"""
-    # Verify action exists
-    action_result = await db.execute(
-        select(Action).where(Action.id == request.action_id)
-    )
+    action_result = await db.execute(select(Action).where(Action.id == request.action_id))
     action = action_result.scalars().first()
 
     if not action:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action not found")
 
-    # Verify leads exist and belong to the current account
     leads_result = await db.execute(
         select(Lead).where(Lead.id.in_(request.lead_ids), Lead.account_id == account.id)
     )
     leads = leads_result.scalars().all()
 
     if not leads:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No leads found with provided IDs",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No leads found with provided IDs")
 
-    # Trigger action for each lead
     applied_count = 0
     for lead in leads:
         try:
@@ -300,7 +272,7 @@ async def apply_action_to_leads(
                 "phone": lead.phone,
                 "company": lead.company,
                 "company_url": lead.company_url,
-                "status": lead.status,
+                "stage": lead.stage,
                 "form_data": lead.form_data,
                 "notes": lead.notes,
                 "created_at": lead.created_at.isoformat(),
@@ -329,23 +301,21 @@ async def get_lead_journey(
     _: User = Depends(get_current_admin),
     account: Account = Depends(get_current_account),
 ):
-    """Return all journey data for a lead: form, goals, actions, status history."""
+    """Return all journey data for a lead: form, goals, actions, stage history."""
     await _get_owned_lead(lead_id, account, db)
 
     result = await db.execute(
         select(Lead).options(
-            selectinload(Lead.status_history),
+            selectinload(Lead.stage_history),
         ).where(Lead.id == lead_id)
     )
     lead = result.scalars().unique().first()
     if not lead:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
 
-    # Form
     form_result = await db.execute(select(Form).where(Form.id == lead.form_id))
     form = form_result.scalars().first()
 
-    # Goal assignments with completion status
     assignments_result = await db.execute(
         select(GoalAssignment, Goal, GoalCompletion)
         .join(Goal, GoalAssignment.goal_id == Goal.id)
@@ -366,7 +336,6 @@ async def get_lead_journey(
         for assignment, goal, completion in assignments_result.all()
     ]
 
-    # Actions: join ActionLog → Action to get every action ever triggered for this lead
     triggered_actions_result = await db.execute(
         select(Action, ActionLog)
         .join(ActionLog, ActionLog.action_id == Action.id)
@@ -386,17 +355,16 @@ async def get_lead_journey(
                 "last_success": log.success,
             })
 
-    # Status history
-    status_history = [
+    stage_history = [
         {
             "id": h.id,
-            "from_status": h.from_status,
-            "to_status": h.to_status,
+            "from_stage": h.from_stage,
+            "to_stage": h.to_stage,
             "changed_by": h.changed_by,
             "note": h.note,
             "created_at": h.created_at.isoformat(),
         }
-        for h in lead.status_history
+        for h in lead.stage_history
     ]
 
     return {
@@ -406,7 +374,7 @@ async def get_lead_journey(
             "last_name": lead.last_name,
             "email": lead.email,
             "company": lead.company,
-            "status": lead.status,
+            "stage": lead.stage,
             "created_at": lead.created_at.isoformat(),
             "entry_source": lead.entry_source,
         },
@@ -418,5 +386,5 @@ async def get_lead_journey(
         },
         "goals": goals,
         "actions": actions,
-        "status_history": status_history,
+        "stage_history": stage_history,
     }

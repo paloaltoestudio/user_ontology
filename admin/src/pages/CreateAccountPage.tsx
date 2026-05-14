@@ -89,7 +89,8 @@ export function CreateAccountPage() {
       const newMembership = accountsRes.data.find((m) => m.account.slug === slug)
       if (newMembership) setCurrentAccount(newMembership.account)
 
-      navigate('/dashboard')
+      // Hard redirect to clear all cached query state, same as AccountSwitcher does
+      window.location.assign('/dashboard')
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??

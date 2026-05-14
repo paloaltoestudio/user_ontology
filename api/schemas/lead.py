@@ -12,7 +12,7 @@ class LeadBase(BaseModel):
     phone: Optional[str] = Field(None, max_length=50, description="Lead phone number")
     company: Optional[str] = Field(None, max_length=255, description="Lead company")
     company_url: Optional[str] = Field(None, max_length=2048, description="Lead company website")
-    status: str = Field(default="new", description="Lead status: new, contacted, qualified, demo_scheduled, negotiating, cold, rejected, user_signup, trial_started, customer")
+    stage: Optional[str] = Field(None, description="Lead lifecycle stage (free-form label)")
     notes: Optional[str] = Field(None, max_length=2000)
 
 
@@ -31,7 +31,7 @@ class LeadCreate(BaseModel):
 class LeadUpdate(BaseModel):
     """Lead update schema (admin only)"""
 
-    status: Optional[str] = None
+    stage: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=2000)
 
 
@@ -61,18 +61,3 @@ class LeadResponse(LeadBase):
 
     class Config:
         from_attributes = True
-
-
-# Default lead statuses
-DEFAULT_LEAD_STATUSES = [
-    "new",
-    "contacted",
-    "qualified",
-    "demo_scheduled",
-    "negotiating",
-    "cold",
-    "rejected",
-    "user_signup",
-    "trial_started",
-    "customer",
-]
