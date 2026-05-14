@@ -75,34 +75,38 @@ def upgrade():
 
     # Backfill stage_definitions from distinct (account_id, stage) on leads
     conn.execute(sa.text("""
-        INSERT OR IGNORE INTO stage_definitions (account_id, name, sort_order, created_at)
-        SELECT DISTINCT account_id, stage, 0, datetime('now')
+        INSERT INTO stage_definitions (account_id, name, sort_order, created_at)
+        SELECT DISTINCT account_id, stage, 0, NOW()
         FROM leads
         WHERE stage IS NOT NULL AND account_id IS NOT NULL
+        ON CONFLICT DO NOTHING
     """))
 
     # Backfill tag_definitions from distinct (account_id, name) on lead_tags
     conn.execute(sa.text("""
-        INSERT OR IGNORE INTO tag_definitions (account_id, name, created_at)
-        SELECT DISTINCT account_id, name, datetime('now')
+        INSERT INTO tag_definitions (account_id, name, created_at)
+        SELECT DISTINCT account_id, name, NOW()
         FROM lead_tags
         WHERE account_id IS NOT NULL
+        ON CONFLICT DO NOTHING
     """))
 
     # Backfill property_definitions from distinct (account_id, key, value_type) on lead_properties
     conn.execute(sa.text("""
-        INSERT OR IGNORE INTO property_definitions (account_id, key, value_type, created_at)
-        SELECT DISTINCT account_id, key, value_type, datetime('now')
+        INSERT INTO property_definitions (account_id, key, value_type, created_at)
+        SELECT DISTINCT account_id, key, value_type, NOW()
         FROM lead_properties
         WHERE account_id IS NOT NULL
+        ON CONFLICT DO NOTHING
     """))
 
     # Backfill event_type_definitions from distinct (account_id, event_type) on lead_events
     conn.execute(sa.text("""
-        INSERT OR IGNORE INTO event_type_definitions (account_id, name, created_at)
-        SELECT DISTINCT account_id, event_type, datetime('now')
+        INSERT INTO event_type_definitions (account_id, name, created_at)
+        SELECT DISTINCT account_id, event_type, NOW()
         FROM lead_events
         WHERE account_id IS NOT NULL
+        ON CONFLICT DO NOTHING
     """))
 
 
